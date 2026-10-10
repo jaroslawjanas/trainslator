@@ -1,0 +1,31 @@
+body {
+  min-height: 100vh;
+}
+
+.mono {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.placeholder-chip {
+  display: inline-block;
+  padding: 0 4px;
+  margin: 0 1px;
+  border-radius: 4px;
+  font-size: 0.75em;
+  line-height: 1.4;
+  vertical-align: baseline;
+  background: var(--mantine-color-gray-2);
+  color: var(--mantine-color-gray-7);
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+[data-mantine-color-scheme="dark"] .placeholder-chip {
+  background: var(--mantine-color-dark-4);
+  color: var(--mantine-color-gray-4);
+}
+
+.unit-text {
+  white-space: pre-wrap;
+  line-height: 1.55;
+}
