@@ -1,8 +1,15 @@
 import { z } from "zod";
-import type { Connection, Model, Pricing } from "../shared/schemas/settings.ts";
-import { defaultStepSettings } from "../shared/schemas/settings.ts";
+import {
+  type Connection,
+  defaultStepSettings,
+  type Model,
+  type Pricing,
+  protocolOf,
+} from "../shared/schemas/settings.ts";
+import { listAnthropicModels } from "./anthropic.ts";
 import { classifyError, type LlmRuntime, send } from "./call.ts";
 import { LlmError } from "./errors.ts";
+import { listOllamaModels } from "./ollama.ts";
 import { buildRequestBody, type RequestPlan } from "./request.ts";
 import { jsonCandidates } from "./response.ts";
 import { toStrictJsonSchema } from "./structured.ts";
@@ -83,6 +90,17 @@ function numberOr(value: unknown): number | null {
 }
 
 export async function listModels(rt: LlmRuntime, connection: Connection): Promise<ListedModel[]> {
+  const protocol = protocolOf(connection.kind);
+  if (protocol === "anthropic") {
+    const models = await listAnthropicModels(rt.clients.anthropic(connection));
+    return models.sort((a, b) => a.id.localeCompare(b.id));
+  }
+  if (protocol === "ollama") {
+    const names = await listOllamaModels(connection);
+    return names
+      .map((id) => ({ id, contextWindow: null, maxOutputTokens: null, pricing: null }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }
   const client = rt.clients.get(connection);
   const out: ListedModel[] = [];
   try {
@@ -196,6 +214,15 @@ export async function testModel(
         const next = current.structuredOutput === "json_schema" ? "json_object" : "none";
         current = { ...current, structuredOutput: next };
         suggestions.structuredOutput = next;
+        continue;
+      }
+      if (
+        err.kind === "bad_request" &&
+        message.includes("does not support thinking") &&
+        (current.reasoningTemplates.onEnabled || current.reasoningTemplates.onDisabled)
+      ) {
+        current = { ...current, reasoningTemplates: { onEnabled: null, onDisabled: null } };
+        suggestions.reasoningTemplates = current.reasoningTemplates;
         continue;
       }
       if (err.kind === "bad_request" && message.includes("prompt_cache_key")) {

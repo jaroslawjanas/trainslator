@@ -25,6 +25,7 @@
     "check": "pnpm typecheck && pnpm lint && pnpm test"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.132.1",
     "@fontsource-variable/ibm-plex-sans": "^5.3.0",
     "@fontsource-variable/literata": "^5.3.0",
     "@fontsource/ibm-plex-mono": "^5.3.0",

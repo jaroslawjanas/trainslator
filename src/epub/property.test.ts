@@ -77,6 +77,16 @@ describe("splice properties", () => {
     );
   });
 
+  it("compares merged wrappers the same however their children were split", () => {
+    // Found by the property above: merging the two <em>s makes their links
+    // neighbours, which the canonical form must then merge too.
+    const html =
+      '<p><em><a href="x.xhtml">aaA</a></em><em><a href="x.xhtml"><img src="i.png" alt="Aa"/></a>A</em><i>A</i>w</p>';
+    const { before, after } = build(html, (u) => u.text);
+    expect(canonical(after)).toBe(canonical(before));
+    expect(after).toContain('<a href="x.xhtml">aaA</a><a href="x.xhtml"><img');
+  });
+
   it("dropping optional placeholders still gives well-formed XML", () => {
     fc.assert(
       fc.property(body, (html) => {

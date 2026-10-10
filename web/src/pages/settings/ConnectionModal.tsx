@@ -14,8 +14,12 @@ import {
   TextInput,
 } from "@mantine/core";
 import { useEffect, useState } from "react";
-import type { Connection, ConnectionKind } from "../../../../src/shared/schemas/settings.ts";
-import { MASKED } from "../../../../src/shared/schemas/settings.ts";
+import {
+  type Connection,
+  type ConnectionKind,
+  MASKED,
+  protocolOf,
+} from "../../../../src/shared/schemas/settings.ts";
 import type { KindPreset } from "../../api/types.ts";
 import { newClientId } from "../../components/JsonField.tsx";
 
@@ -35,6 +39,25 @@ export function emptyConnection(kind: ConnectionKind, preset: KindPreset): Conne
     maxRetries: 4,
     stream: true,
   };
+}
+
+const BASE_URL_HINT: Record<string, string> = {
+  openai: "The OpenAI-compatible endpoint, usually ending in /v1.",
+  ollama: "Where Ollama listens on this computer, normally http://localhost:11434.",
+  ollama_cloud: "https://ollama.com. Change it only to go through a proxy.",
+  anthropic: "https://api.anthropic.com. Change it only to go through a proxy.",
+};
+
+/** Plain http to a host on the internet gets redirected to https, and the redirected POST fails. */
+function insecureRemote(url: string): boolean {
+  const m = /^http:\/\/([^/:]+)/i.exec(url.trim());
+  if (!m) return false;
+  const host = m[1]!.toLowerCase();
+  return !(
+    host === "localhost" ||
+    host.endsWith(".local") ||
+    /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$)/.test(host)
+  );
 }
 
 export function ConnectionModal({
@@ -61,6 +84,28 @@ export function ConnectionModal({
 
   const set = (patch: Partial<Connection>) => setC((prev) => ({ ...prev, ...patch }));
   const preset = presets[c.kind];
+  const isOllama = c.kind === "ollama" || c.kind === "ollama_cloud";
+
+  /** Switch kind; name, URL and key follow the new kind unless you changed them. */
+  const switchKind = (kind: ConnectionKind) => {
+    const from = presets[c.kind];
+    const to = presets[kind];
+    const keyIsDefault =
+      c.apiKey.kind === "none"
+        ? from.suggestedKeyEnv === null
+        : c.apiKey.kind === "env" && c.apiKey.name === from.suggestedKeyEnv;
+    set({
+      kind,
+      name: isNew || c.name === from.label ? to.label : c.name,
+      baseUrl: isNew || c.baseUrl === from.defaultBaseUrl ? to.defaultBaseUrl : c.baseUrl,
+      apiKey:
+        isNew || keyIsDefault
+          ? to.suggestedKeyEnv
+            ? { kind: "env", name: to.suggestedKeyEnv }
+            : { kind: "none" }
+          : c.apiKey,
+    });
+  };
 
   return (
     <Modal
@@ -73,25 +118,32 @@ export function ConnectionModal({
         <Select
           label="Kind"
           description="Pre-fills sensible defaults for this kind of API."
-          data={Object.entries(presets).map(([value, p]) => ({ value, label: p.label }))}
-          value={c.kind}
+          data={Object.entries(presets)
+            .filter(([value]) => value !== "ollama_cloud")
+            .map(([value, p]) => ({ value, label: value === "ollama" ? "Ollama" : p.label }))}
+          value={isOllama ? "ollama" : c.kind}
           allowDeselect={false}
           onChange={(value) => {
-            if (!value) return;
-            const kind = value as ConnectionKind;
-            const p = presets[kind];
-            set({
-              kind,
-              name: isNew ? p.label : c.name,
-              baseUrl: isNew ? p.defaultBaseUrl : c.baseUrl,
-              apiKey: isNew
-                ? p.suggestedKeyEnv
-                  ? { kind: "env", name: p.suggestedKeyEnv }
-                  : { kind: "none" }
-                : c.apiKey,
-            });
+            if (!value || (value === "ollama" && isOllama)) return;
+            switchKind(value as ConnectionKind);
           }}
         />
+        {isOllama && (
+          <Stack gap={6}>
+            <Text size="sm" fw={500}>
+              Where does Ollama run?
+            </Text>
+            <SegmentedControl
+              size="sm"
+              value={c.kind}
+              onChange={(v) => switchKind(v as ConnectionKind)}
+              data={[
+                { value: "ollama", label: "On this computer" },
+                { value: "ollama_cloud", label: "Ollama Cloud (API)" },
+              ]}
+            />
+          </Stack>
+        )}
         <Text size="xs" c="dimmed">
           {preset.notes}
         </Text>
@@ -102,9 +154,16 @@ export function ConnectionModal({
         />
         <TextInput
           label="Base URL"
-          description="The OpenAI-compatible endpoint, usually ending in /v1."
+          description={
+            BASE_URL_HINT[c.kind] ?? BASE_URL_HINT[protocolOf(c.kind)] ?? BASE_URL_HINT.openai
+          }
           value={c.baseUrl}
           onChange={(e) => set({ baseUrl: e.currentTarget.value })}
+          error={
+            insecureRemote(c.baseUrl)
+              ? "This address uses http:// for a server on the internet. Hosted APIs need https://; over http the request is redirected and fails."
+              : undefined
+          }
         />
         <Stack gap={6}>
           <Text size="sm" fw={500}>

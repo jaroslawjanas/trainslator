@@ -1,15 +1,24 @@
+import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 import { Agent, fetch as undiciFetch } from "undici";
 import type { Connection } from "../shared/schemas/settings.ts";
 
 /**
- * One SDK client per connection. Requests go through undici with its header
+ * SDK clients per connection. Requests go through undici with its header
  * and body timeouts switched off: Node's built-in fetch gives up after 5
  * minutes without data, which kills long reasoning calls. Our own deadline
- * and idle watchdog (call.ts) replace those timeouts.
+ * and idle watchdog (watch.ts) replace those timeouts.
  */
 
-const dispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0, keepAliveTimeout: 30_000 });
+export const dispatcher = new Agent({
+  headersTimeout: 0,
+  bodyTimeout: 0,
+  keepAliveTimeout: 30_000,
+});
+
+/** fetch without the 5-minute limits, for SDKs and our own HTTP calls. */
+export const longFetch = ((input: Parameters<typeof undiciFetch>[0], init = {}) =>
+  undiciFetch(input, { ...init, dispatcher })) as unknown as typeof fetch;
 
 export function resolveApiKey(connection: Connection): string {
   const key = connection.apiKey;
@@ -26,31 +35,57 @@ export function resolveApiKey(connection: Connection): string {
   return "no-key";
 }
 
+/** The base URL without trailing slashes and without a version or API suffix a user may paste. */
+export function rootUrl(connection: Connection, suffixes: RegExp): string {
+  return connection.baseUrl.replace(/\/+$/, "").replace(suffixes, "");
+}
+
+function headersOf(connection: Connection): Record<string, string> {
+  return Object.fromEntries(connection.headers.map((h) => [h.name, h.value]));
+}
+
 export class ClientPool {
   private readonly clients = new Map<string, { signature: string; client: OpenAI }>();
+  private readonly anthropicClients = new Map<string, { signature: string; client: Anthropic }>();
 
+  private signature(connection: Connection, apiKey: string): string {
+    return JSON.stringify([connection.baseUrl, apiKey, connection.headers, connection.maxRetries]);
+  }
+
+  /** OpenAI-compatible Chat Completions. */
   get(connection: Connection): OpenAI {
     const apiKey = resolveApiKey(connection);
-    const signature = JSON.stringify([
-      connection.baseUrl,
-      apiKey,
-      connection.headers,
-      connection.maxRetries,
-    ]);
+    const signature = this.signature(connection, apiKey);
     const cached = this.clients.get(connection.id);
     if (cached && cached.signature === signature) return cached.client;
     const client = new OpenAI({
       apiKey,
       baseURL: connection.baseUrl.replace(/\/+$/, ""),
-      defaultHeaders: Object.fromEntries(connection.headers.map((h) => [h.name, h.value])),
+      defaultHeaders: headersOf(connection),
       maxRetries: connection.maxRetries,
       timeout: connection.timeoutSec * 1000,
-      fetch: undiciFetch as unknown as typeof fetch,
-      fetchOptions: { dispatcher } as unknown as NonNullable<
-        ConstructorParameters<typeof OpenAI>[0]
-      >["fetchOptions"],
+      fetch: longFetch,
     });
     this.clients.set(connection.id, { signature, client });
+    return client;
+  }
+
+  /** Anthropic's Messages API. */
+  anthropic(connection: Connection): Anthropic {
+    const apiKey = resolveApiKey(connection);
+    const signature = this.signature(connection, apiKey);
+    const cached = this.anthropicClients.get(connection.id);
+    if (cached && cached.signature === signature) return cached.client;
+    const client = new Anthropic({
+      apiKey,
+      // The SDK adds /v1/... itself.
+      baseURL: rootUrl(connection, /\/v1$/),
+      defaultHeaders: headersOf(connection),
+      maxRetries: connection.maxRetries,
+      timeout: connection.timeoutSec * 1000,
+      fetch: longFetch,
+    });
+    this.anthropicClients.set(connection.id, { signature, client });
     return client;
   }
 }

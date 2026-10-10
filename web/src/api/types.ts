@@ -21,6 +21,7 @@ export interface KindPreset {
     | "cacheMarkerTtl"
     | "sendPromptCacheKey"
   >;
+  limits: { contextWindow: number; maxOutputTokens: number };
   notes: string;
 }
 

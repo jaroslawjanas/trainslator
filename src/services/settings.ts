@@ -12,6 +12,7 @@ import { STEP_INFO, type Step } from "../shared/steps.ts";
 import { readJson, withFileLock, writeJson } from "../store/json.ts";
 import type { DataPaths } from "../store/paths.ts";
 import { UserError } from "./projects.ts";
+import { migrateSettings } from "./settings-migrate.ts";
 
 /** In-memory settings, persisted to settings.json. API keys never leave the server unmasked. */
 export class SettingsService {
@@ -24,6 +25,8 @@ export class SettingsService {
 
   async load(): Promise<void> {
     this.current = (await readJson(this.paths.settings(), Settings)) ?? defaultSettings();
+    const migrated = migrateSettings(this.current);
+    if (migrated) await this.save(migrated);
   }
 
   get(): Settings {

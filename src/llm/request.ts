@@ -1,4 +1,9 @@
-import type { Connection, Model, StepSettings } from "../shared/schemas/settings.ts";
+import {
+  type Connection,
+  type Model,
+  protocolOf,
+  type StepSettings,
+} from "../shared/schemas/settings.ts";
 import { describeSchema, type JsonSchema } from "./structured.ts";
 
 /**
@@ -103,7 +108,35 @@ function contentFor(blocks: PromptBlock[], markers: boolean, ttl: "5m" | "1h"): 
   });
 }
 
-/** Builds the Chat Completions request body. */
+function cacheControl(ttl: "5m" | "1h"): { [key: string]: Json } {
+  return ttl === "1h" ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
+}
+
+/**
+ * The plan's blocks plus the output-format instructions, split by role.
+ * Copies, so cache-marker trimming never changes the caller's blocks.
+ */
+function promptParts(plan: RequestPlan, markers: boolean) {
+  const systemBlocks = plan.blocks.filter((b) => b.role === "system").map((b) => ({ ...b }));
+  const userBlocks = plan.blocks.filter((b) => b.role === "user").map((b) => ({ ...b }));
+  // Always describe the structure in the prompt too: many providers accept
+  // a schema but don't enforce it.
+  systemBlocks.push({ role: "system", label: "output format", text: schemaInstructions(plan) });
+  if (markers) {
+    // At most 4 explicit cache breakpoints (Anthropic's limit); keep the last ones.
+    const flagged = [...systemBlocks, ...userBlocks].filter((b) => b.cacheBreakpoint);
+    for (const b of flagged.slice(0, Math.max(0, flagged.length - 4))) b.cacheBreakpoint = false;
+  } else {
+    for (const b of [...systemBlocks, ...userBlocks]) b.cacheBreakpoint = false;
+  }
+  return { systemBlocks, userBlocks };
+}
+
+function joined(blocks: PromptBlock[]): string {
+  return blocks.map((b) => b.text + BLOCK_SEPARATOR).join("");
+}
+
+/** Builds the request body in the format of the connection's API. */
 export function buildRequestBody(
   connection: Connection,
   model: Model,
@@ -111,17 +144,29 @@ export function buildRequestBody(
   plan: RequestPlan,
   stream: boolean,
 ): Record<string, unknown> {
+  const protocol = protocolOf(connection.kind);
+  if (protocol === "ollama") return buildOllamaBody(connection, model, step, plan, stream);
+  if (protocol === "anthropic") return buildAnthropicBody(model, step, plan, stream);
+  return buildChatCompletionsBody(connection, model, step, plan, stream);
+}
+
+/** The output limit as it appears in a request body of any protocol (for logs). */
+export function bodyOutputLimit(body: Record<string, unknown>): number | null {
+  const options = body.options as Record<string, unknown> | undefined;
+  const value = body.max_tokens ?? body.max_completion_tokens ?? options?.num_predict;
+  return typeof value === "number" ? value : null;
+}
+
+/** OpenAI-compatible Chat Completions. */
+function buildChatCompletionsBody(
+  connection: Connection,
+  model: Model,
+  step: StepSettings,
+  plan: RequestPlan,
+  stream: boolean,
+): Record<string, unknown> {
   const markers = model.cacheMarkers === "anthropic";
-  const systemBlocks = plan.blocks.filter((b) => b.role === "system");
-  const userBlocks = plan.blocks.filter((b) => b.role === "user");
-  // Always describe the structure in the prompt too: many providers accept
-  // response_format but don't enforce it.
-  systemBlocks.push({ role: "system", label: "output format", text: schemaInstructions(plan) });
-  // At most 4 explicit cache breakpoints (Anthropic's limit); keep the last ones.
-  if (markers) {
-    const flagged = [...systemBlocks, ...userBlocks].filter((b) => b.cacheBreakpoint);
-    for (const b of flagged.slice(0, Math.max(0, flagged.length - 4))) b.cacheBreakpoint = false;
-  }
+  const { systemBlocks, userBlocks } = promptParts(plan, markers);
 
   const messages: Json[] = [];
   if (systemBlocks.length > 0) {
@@ -160,6 +205,82 @@ export function buildRequestBody(
     body.stream = true;
     body.stream_options = { include_usage: true };
   }
+  if (step.extraBody) body = deepMerge(body, step.extraBody);
+  return body;
+}
+
+/**
+ * Ollama's own chat API (/api/chat), on this computer or on Ollama Cloud.
+ * Unlike its OpenAI-compatible endpoint it honours the output limit
+ * (num_predict), can set the context size (num_ctx) and enforces the schema.
+ */
+function buildOllamaBody(
+  connection: Connection,
+  model: Model,
+  step: StepSettings,
+  plan: RequestPlan,
+  stream: boolean,
+): Record<string, unknown> {
+  const { systemBlocks, userBlocks } = promptParts(plan, false);
+  const messages: Json[] = [
+    { role: "system", content: joined(systemBlocks) },
+    { role: "user", content: joined(userBlocks) },
+  ];
+  for (const turn of plan.repair) {
+    messages.push({ role: "assistant", content: turn.previous });
+    messages.push({ role: "user", content: turn.problems });
+  }
+  const options: Record<string, unknown> = { num_predict: outputLimit(model, step, plan) };
+  // On this computer the context size must be asked for, or Ollama's small
+  // default silently cuts long prompts. Ollama Cloud manages it itself.
+  if (connection.kind === "ollama") options.num_ctx = model.contextWindow;
+  if (step.temperature !== null && model.sendTemperature) options.temperature = step.temperature;
+  // The ":cloud" / "-cloud" suffix is for the Ollama app; the cloud API wants the plain name.
+  const name =
+    connection.kind === "ollama_cloud"
+      ? model.modelName.replace(/[-:]cloud$/, "")
+      : model.modelName;
+  let body: Record<string, unknown> = { model: name, messages, stream, options };
+  if (model.structuredOutput === "json_schema") body.format = plan.jsonSchema;
+  else if (model.structuredOutput === "json_object") body.format = "json";
+  const reasoning = reasoningParams(model, step);
+  if (reasoning) body = deepMerge(body, reasoning);
+  if (step.extraBody) body = deepMerge(body, step.extraBody);
+  return body;
+}
+
+/** Anthropic's Messages API: system and user blocks keep their cache breakpoints. */
+function buildAnthropicBody(
+  model: Model,
+  step: StepSettings,
+  plan: RequestPlan,
+  stream: boolean,
+): Record<string, unknown> {
+  const markers = model.cacheMarkers === "anthropic";
+  const { systemBlocks, userBlocks } = promptParts(plan, markers);
+  const textBlock = (b: PromptBlock): { [key: string]: Json } => {
+    const block: { [key: string]: Json } = { type: "text", text: b.text + BLOCK_SEPARATOR };
+    if (b.cacheBreakpoint) block.cache_control = cacheControl(model.cacheMarkerTtl);
+    return block;
+  };
+  const messages: Json[] = [{ role: "user", content: userBlocks.map(textBlock) }];
+  for (const turn of plan.repair) {
+    messages.push({ role: "assistant", content: turn.previous });
+    messages.push({ role: "user", content: turn.problems });
+  }
+  let body: Record<string, unknown> = {
+    model: model.modelName,
+    max_tokens: outputLimit(model, step, plan),
+    system: systemBlocks.map(textBlock),
+    messages,
+  };
+  if (model.structuredOutput === "json_schema") {
+    body.output_config = { format: { type: "json_schema", schema: plan.jsonSchema } };
+  }
+  if (step.temperature !== null && model.sendTemperature) body.temperature = step.temperature;
+  const reasoning = reasoningParams(model, step);
+  if (reasoning) body = deepMerge(body, reasoning);
+  if (stream) body.stream = true;
   if (step.extraBody) body = deepMerge(body, step.extraBody);
   return body;
 }

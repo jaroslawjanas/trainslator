@@ -12,16 +12,29 @@ import {
 } from "openai";
 import type { z } from "zod";
 import { addUsage, emptyUsage, type Usage } from "../shared/schemas/common.ts";
-import type { Connection, Model, StepSettings } from "../shared/schemas/settings.ts";
+import {
+  type Connection,
+  type Model,
+  protocolOf,
+  type StepSettings,
+} from "../shared/schemas/settings.ts";
 import type { Step } from "../shared/steps.ts";
 import type { DataPaths } from "../store/paths.ts";
+import { sendAnthropic } from "./anthropic.ts";
 import type { ResponseCache } from "./cache.ts";
 import type { CalibrationStore } from "./calibration.ts";
 import type { ClientPool } from "./client.ts";
 import { LlmError } from "./errors.ts";
 import type { Lane, Limiter } from "./limiter.ts";
 import { type CallLog, costOf } from "./log.ts";
-import { buildRequestBody, outputLimit, type PromptBlock, type RequestPlan } from "./request.ts";
+import { sendOllama } from "./ollama.ts";
+import {
+  bodyOutputLimit,
+  buildRequestBody,
+  outputLimit,
+  type PromptBlock,
+  type RequestPlan,
+} from "./request.ts";
 import {
   jsonCandidates,
   type NormalizedUsage,
@@ -36,6 +49,7 @@ import {
   toStrictJsonSchema,
 } from "./structured.ts";
 import { estimateTokens, reasoningAllowance } from "./tokens.ts";
+import { Watch } from "./watch.ts";
 
 /** Everything the LLM layer needs, shared by all jobs. */
 export interface LlmRuntime {
@@ -239,8 +253,8 @@ export function classifyError(
 }
 
 function retryAfterMs(error: LlmError, fallback: number): number {
-  const cause = error.cause;
-  if (cause instanceof APIError && cause.headers) {
+  const cause = error.cause as { headers?: { get?: (name: string) => string | null } } | undefined;
+  if (cause?.headers) {
     const header = cause.headers.get?.("retry-after");
     const seconds = header ? Number(header) : Number.NaN;
     if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 5 * 60_000);
@@ -255,53 +269,55 @@ export async function send(
   body: Record<string, unknown>,
   signal: AbortSignal | undefined,
 ): Promise<RawResult> {
-  const client = rt.clients.get(connection);
-  const controller = new AbortController();
-  let timedOut: string | null = null;
-  const onExternalAbort = () => controller.abort();
-  signal?.addEventListener("abort", onExternalAbort, { once: true });
-  const deadline = setTimeout(() => {
-    timedOut = `No complete answer after ${connection.timeoutSec} s (the connection's time limit).`;
-    controller.abort();
-  }, connection.timeoutSec * 1000);
-  let idle: NodeJS.Timeout | null = null;
-  const resetIdle = () => {
-    if (idle) clearTimeout(idle);
-    idle = setTimeout(() => {
-      timedOut = `No data from the provider for ${connection.idleTimeoutSec} s.`;
-      controller.abort();
-    }, connection.idleTimeoutSec * 1000);
-  };
+  const watch = new Watch(connection, signal);
   try {
-    const options = {
-      signal: controller.signal,
-      maxRetries: connection.maxRetries,
-      timeout: connection.timeoutSec * 1000,
-    };
-    if (body.stream) {
-      resetIdle();
-      const stream = await client.chat.completions.create(
-        body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream: true },
-        options,
-      );
-      const result = await readStream(stream as AsyncIterable<unknown>, resetIdle);
-      // An aborted stream can end quietly instead of throwing.
-      if (timedOut) throw new LlmError("transport", timedOut);
-      if (signal?.aborted) throw new LlmError("aborted", "Cancelled");
-      return result;
-    }
-    const completion = await client.chat.completions.create(
-      body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream?: false },
+    const protocol = protocolOf(connection.kind);
+    const result =
+      protocol === "anthropic"
+        ? await sendAnthropic(rt.clients.anthropic(connection), body, watch, {
+            maxRetries: connection.maxRetries,
+            timeoutMs: connection.timeoutSec * 1000,
+          })
+        : protocol === "ollama"
+          ? await sendOllama(connection, body, watch)
+          : await sendChatCompletions(rt, connection, body, watch);
+    // An aborted stream can end quietly instead of throwing.
+    if (watch.timedOut) throw new LlmError("transport", watch.timedOut);
+    if (signal?.aborted) throw new LlmError("aborted", "Cancelled");
+    return result;
+  } catch (error) {
+    throw classifyError(error, watch.timedOut, signal);
+  } finally {
+    watch.dispose();
+  }
+}
+
+/** OpenAI-compatible Chat Completions through the openai SDK. */
+async function sendChatCompletions(
+  rt: LlmRuntime,
+  connection: Connection,
+  body: Record<string, unknown>,
+  watch: Watch,
+): Promise<RawResult> {
+  const client = rt.clients.get(connection);
+  const options = {
+    signal: watch.signal,
+    maxRetries: connection.maxRetries,
+    timeout: connection.timeoutSec * 1000,
+  };
+  if (body.stream) {
+    watch.activity();
+    const stream = await client.chat.completions.create(
+      body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream: true },
       options,
     );
-    return readCompletion(completion);
-  } catch (error) {
-    throw classifyError(error, timedOut, signal);
-  } finally {
-    clearTimeout(deadline);
-    if (idle) clearTimeout(idle);
-    signal?.removeEventListener("abort", onExternalAbort);
+    return readStream(stream as AsyncIterable<unknown>, () => watch.activity());
   }
+  const completion = await client.chat.completions.create(
+    body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream?: false },
+    options,
+  );
+  return readCompletion(completion);
 }
 
 interface Picked<T> {
@@ -461,7 +477,7 @@ export async function callStructured<T>(
       requestHash: cacheKey,
       blockTokens,
       params: {
-        maxTokens: body[model.maxTokensParam],
+        maxTokens: bodyOutputLimit(body),
         reasoning: step.reasoning,
         temperature: body.temperature ?? null,
         repairTurn: plan.repair.length,
@@ -595,7 +611,8 @@ export async function callStructured<T>(
       raw.usage &&
       raw.usage.promptTokens > 0 &&
       promptEstimate > 3000 &&
-      raw.usage.promptTokens < promptEstimate * 0.6
+      raw.usage.promptTokens < promptEstimate * 0.6 &&
+      protocolOf(connection.kind) !== "ollama"
     ) {
       await log("prompt truncated by the server");
       throw new LlmError(

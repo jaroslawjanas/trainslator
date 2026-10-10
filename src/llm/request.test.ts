@@ -67,10 +67,15 @@ describe("request bodies", () => {
     const deepseek = makeModel("deepseek");
     const off = buildRequestBody(makeConnection("http://x"), deepseek, makeStep(), plan(), false);
     expect(off.thinking).toEqual({ type: "disabled" });
-    const anthropic = makeModel("anthropic");
+    const budgeted = makeModel("custom", {
+      reasoningTemplates: {
+        onEnabled: { thinking: { type: "enabled", budget_tokens: "{{budget}}" } },
+        onDisabled: null,
+      },
+    });
     const on = buildRequestBody(
       makeConnection("http://x"),
-      anthropic,
+      budgeted,
       makeStep({ reasoning: { enabled: true, effort: null, budgetTokens: 3000 } }),
       plan({ reasoningAllowance: 3000 }),
       false,
@@ -119,5 +124,104 @@ describe("request bodies", () => {
       false,
     );
     expect(body.max_tokens).toBe(500);
+  });
+});
+
+describe("native request bodies", () => {
+  it("builds an Ollama /api/chat body with num_predict, num_ctx and the schema", () => {
+    const local = buildRequestBody(
+      makeConnection("http://localhost:11434", { kind: "ollama" }),
+      makeModel("ollama", { contextWindow: 32_768 }),
+      makeStep({ temperature: 0.3 }),
+      plan({ repair: [{ previous: "{}", problems: "missing answer" }] }),
+      true,
+    );
+    expect(local).toMatchObject({
+      model: "fake-model",
+      stream: true,
+      format: schema,
+      think: false,
+      options: { num_predict: 1000, num_ctx: 32_768, temperature: 0.3 },
+    });
+    const messages = local.messages as { role: string; content: string }[];
+    expect(messages.map((m) => m.role)).toEqual(["system", "user", "assistant", "user"]);
+    expect(messages[0]!.content).toContain("You translate.");
+    expect(messages[0]!.content).toContain("Respond with a single JSON object");
+    expect(messages[1]!.content).toBe("KB\n\nHello\n\n");
+
+    // Ollama Cloud manages the context size itself.
+    const cloud = buildRequestBody(
+      makeConnection("https://ollama.com", { kind: "ollama_cloud" }),
+      makeModel("ollama_cloud"),
+      makeStep({ reasoning: { enabled: true, effort: "high", budgetTokens: null } }),
+      plan(),
+      false,
+    );
+    expect((cloud.options as Record<string, unknown>).num_ctx).toBeUndefined();
+    const suffixed = buildRequestBody(
+      makeConnection("https://ollama.com", { kind: "ollama_cloud" }),
+      makeModel("ollama_cloud", { modelName: "deepseek-v4.1-flash:cloud" }),
+      makeStep(),
+      plan(),
+      false,
+    );
+    expect(suffixed.model).toBe("deepseek-v4.1-flash");
+    expect(cloud.think).toBe(true);
+    expect(cloud.stream).toBe(false);
+  });
+
+  it("builds an Anthropic Messages body with cache breakpoints, schema and effort", () => {
+    const body = buildRequestBody(
+      makeConnection("https://api.anthropic.com", { kind: "anthropic" }),
+      makeModel("anthropic"),
+      makeStep({ reasoning: { enabled: true, effort: "high", budgetTokens: null } }),
+      plan({ reasoningAllowance: 2000 }),
+      true,
+    );
+    expect(body).toMatchObject({
+      model: "fake-model",
+      max_tokens: 3000,
+      stream: true,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "high", format: { type: "json_schema", schema } },
+    });
+    expect(body.temperature).toBeUndefined();
+    expect(body.system).toEqual([
+      { type: "text", text: "You translate.\n\n" },
+      { type: "text", text: expect.stringContaining("Respond with a single JSON object") },
+    ]);
+    expect(body.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "KB\n\n", cache_control: { type: "ephemeral" } },
+          { type: "text", text: "Hello\n\n" },
+        ],
+      },
+    ]);
+  });
+
+  it("leaves thinking to the model's default when reasoning is off, and keeps at most 4 breakpoints", () => {
+    const blocks = Array.from({ length: 6 }, (_, i) => ({
+      role: "user" as const,
+      label: `b${i}`,
+      text: `block ${i}`,
+      cacheBreakpoint: true,
+    }));
+    const p = plan({ blocks });
+    const body = buildRequestBody(
+      makeConnection("https://api.anthropic.com", { kind: "anthropic" }),
+      makeModel("anthropic", { cacheMarkerTtl: "1h" }),
+      makeStep(),
+      p,
+      false,
+    );
+    expect(body.thinking).toBeUndefined();
+    expect(body.output_config).toEqual({ format: { type: "json_schema", schema } });
+    const parts = (body.messages as { content: { cache_control?: unknown }[] }[])[0]!.content;
+    expect(parts.filter((x) => x.cache_control).length).toBe(4);
+    expect(parts[5]!.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
+    // The caller's blocks are not changed by trimming the breakpoints.
+    expect(p.blocks.every((b) => b.cacheBreakpoint)).toBe(true);
   });
 });

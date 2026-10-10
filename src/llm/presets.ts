@@ -17,8 +17,12 @@ export interface KindPreset {
   defaultBaseUrl: string;
   suggestedKeyEnv: string | null;
   model: ModelCapabilities;
+  /** Starting context window and output limit for new models of this kind. */
+  limits: { contextWindow: number; maxOutputTokens: number };
   notes: string;
 }
+
+const DEFAULT_LIMITS = { contextWindow: 128_000, maxOutputTokens: 16_000 };
 
 /**
  * Starting values per connection kind. Everything here can be changed per
@@ -39,6 +43,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: true,
     },
+    limits: DEFAULT_LIMITS,
     notes:
       'Prompt caching is automatic. Reasoning models default to some reasoning; to turn it down, set the \'reasoning off\' template to {"reasoning_effort": "minimal"} or "none".',
   },
@@ -59,6 +64,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: true,
     },
+    limits: DEFAULT_LIMITS,
     notes:
       'For Anthropic and Gemini models, set cache markers to \'anthropic\' to enable prompt caching. To turn reasoning off on reasoning models, use {"reasoning": {"effort": "none"}}.',
   },
@@ -79,6 +85,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: DEFAULT_LIMITS,
     notes:
       "Supports JSON mode but not JSON schemas; the schema is described in the prompt instead.",
   },
@@ -99,27 +106,31 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: DEFAULT_LIMITS,
     notes: "Some Gemini models can't turn thinking off; set reasoning to 'mandatory' for those.",
   },
   anthropic: {
-    label: "Anthropic (OpenAI-compatible endpoint)",
-    defaultBaseUrl: "https://api.anthropic.com/v1",
+    label: "Anthropic",
+    defaultBaseUrl: "https://api.anthropic.com",
     suggestedKeyEnv: "ANTHROPIC_API_KEY",
     model: {
-      structuredOutput: "none",
+      structuredOutput: "json_schema",
       maxTokensParam: "max_tokens",
       sendTemperature: false,
-      reasoningMode: "optional",
+      // Current Claude models think by default; "off" sends nothing, so each
+      // model uses its own default (some can't turn thinking off at all).
+      reasoningMode: "on_by_default",
       reasoningTemplates: {
-        onEnabled: { thinking: { type: "enabled", budget_tokens: "{{budget}}" } },
+        onEnabled: { thinking: { type: "adaptive" }, output_config: { effort: "{{effort}}" } },
         onDisabled: null,
       },
-      cacheMarkers: "none",
+      cacheMarkers: "anthropic",
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: { contextWindow: 1_000_000, maxOutputTokens: 64_000 },
     notes:
-      "This endpoint ignores response_format and doesn't do prompt caching. For caching, use Anthropic models through OpenRouter with cache markers.",
+      "Anthropic's own Messages API: JSON-schema output, prompt caching on the stable parts of each request, and adaptive thinking with an effort level (low, medium, high, xhigh or max). The base URL only changes for a proxy.",
   },
   vllm: {
     label: "vLLM / SGLang / llama.cpp server",
@@ -138,12 +149,34 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: DEFAULT_LIMITS,
     notes:
       "Prefix caching is automatic. Cached-token counts are reported only when vLLM runs with --enable-prompt-tokens-details. Some models use the key 'thinking' instead of 'enable_thinking'.",
   },
   ollama: {
-    label: "Ollama (local or Ollama Cloud)",
-    defaultBaseUrl: "http://localhost:11434/v1",
+    label: "Ollama on this computer",
+    defaultBaseUrl: "http://localhost:11434",
+    suggestedKeyEnv: null,
+    model: {
+      structuredOutput: "json_schema",
+      maxTokensParam: "max_tokens",
+      sendTemperature: true,
+      reasoningMode: "optional",
+      reasoningTemplates: {
+        onEnabled: { think: true },
+        onDisabled: { think: false },
+      },
+      cacheMarkers: "none",
+      cacheMarkerTtl: "5m",
+      sendPromptCacheKey: false,
+    },
+    limits: { contextWindow: 32_768, maxOutputTokens: 8_192 },
+    notes:
+      "Ollama's own API. Trainslator asks Ollama for the model's context window (num_ctx), so long prompts aren't cut; Ollama needs memory to match, so set the context window to what your machine can handle. For gpt-oss models, change the 'reasoning on' template to {\"think\": \"{{effort}}\"}.",
+  },
+  ollama_cloud: {
+    label: "Ollama Cloud",
+    defaultBaseUrl: "https://ollama.com",
     suggestedKeyEnv: "OLLAMA_API_KEY",
     model: {
       structuredOutput: "json_schema",
@@ -151,15 +184,16 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       sendTemperature: true,
       reasoningMode: "optional",
       reasoningTemplates: {
-        onEnabled: { reasoning_effort: "{{effort}}" },
-        onDisabled: { reasoning_effort: "none" },
+        onEnabled: { think: true },
+        onDisabled: { think: false },
       },
       cacheMarkers: "none",
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: DEFAULT_LIMITS,
     notes:
-      "For Ollama Cloud use base URL https://ollama.com/v1 with an API key. Reasoning models think by default; the 'reasoning off' template sends reasoning_effort: none. A local Ollama's context size can't be set through this API; long prompts are cut silently unless the model's num_ctx is large enough (Modelfile or OLLAMA_CONTEXT_LENGTH).",
+      "Ollama's own API on ollama.com, with a key from ollama.com/settings/keys. Use the model names Ollama lists (e.g. gpt-oss:120b), without a :cloud suffix.",
   },
   custom: {
     label: "Other OpenAI-compatible API",
@@ -175,6 +209,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
+    limits: DEFAULT_LIMITS,
     notes: "Use Test connection to find which settings this API accepts.",
   },
 };

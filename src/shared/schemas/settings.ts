@@ -10,9 +10,22 @@ export const ConnectionKind = z.enum([
   "anthropic",
   "vllm",
   "ollama",
+  "ollama_cloud",
   "custom",
 ]);
 export type ConnectionKind = z.infer<typeof ConnectionKind>;
+
+/**
+ * The API a connection speaks. Most kinds use OpenAI-compatible Chat
+ * Completions; Ollama (local or cloud) and Anthropic use their own APIs.
+ */
+export type Protocol = "openai" | "ollama" | "anthropic";
+
+export function protocolOf(kind: ConnectionKind): Protocol {
+  if (kind === "ollama" || kind === "ollama_cloud") return "ollama";
+  if (kind === "anthropic") return "anthropic";
+  return "openai";
+}
 
 export const ApiKeyRef = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("env"), name: z.string().min(1) }),

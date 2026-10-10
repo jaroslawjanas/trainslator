@@ -13,7 +13,11 @@ import {
 } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import type { Connection, Model } from "../../../../src/shared/schemas/settings.ts";
+import {
+  type Connection,
+  type Model,
+  protocolOf,
+} from "../../../../src/shared/schemas/settings.ts";
 import { get } from "../../api/client.ts";
 import type { KindPreset, ListedModel } from "../../api/types.ts";
 import { JsonField, newClientId } from "../../components/JsonField.tsx";
@@ -24,8 +28,8 @@ export function emptyModel(connection: Connection, preset: KindPreset): Model {
     connectionId: connection.id,
     modelName: "",
     label: "",
-    contextWindow: 128_000,
-    maxOutputTokens: 16_000,
+    contextWindow: preset.limits.contextWindow,
+    maxOutputTokens: preset.limits.maxOutputTokens,
     maxParallel: 4,
     pricing: null,
     ...preset.model,
@@ -77,6 +81,15 @@ export function ModelModal({
   };
 
   const valid = m.modelName.trim() && m.label.trim() && jsonOk.on && jsonOk.off;
+  const protocol = protocolOf(connection.kind);
+  const nameHint =
+    protocol === "anthropic"
+      ? "e.g. claude-opus-5-5."
+      : connection.kind === "ollama"
+        ? "A model installed in Ollama, e.g. qwen3:14b."
+        : connection.kind === "ollama_cloud"
+          ? "As Ollama Cloud lists it, e.g. gpt-oss:120b (no :cloud suffix)."
+          : "As the API expects it, e.g. gpt-5-mini.";
 
   return (
     <Modal
@@ -88,11 +101,7 @@ export function ModelModal({
       <Stack>
         <Autocomplete
           label="Model name"
-          description={
-            listed.isError
-              ? "Couldn't list models; type the name."
-              : "As the API expects it, e.g. gpt-5-mini or deepseek-v4.1-flash:cloud."
-          }
+          description={listed.isError ? "Couldn't list models; type the name." : nameHint}
           data={options.map((o) => o.id)}
           value={m.modelName}
           limit={50}
@@ -108,6 +117,11 @@ export function ModelModal({
         <Group grow>
           <NumberInput
             label="Context window (tokens)"
+            description={
+              connection.kind === "ollama"
+                ? "Ollama sets aside memory for this many tokens."
+                : undefined
+            }
             min={1000}
             step={1000}
             thousandSeparator=","
@@ -144,13 +158,15 @@ export function ModelModal({
             allowDeselect={false}
             onChange={(v) => v && set({ structuredOutput: v as Model["structuredOutput"] })}
           />
-          <Select
-            label="Length parameter"
-            data={["max_tokens", "max_completion_tokens"]}
-            value={m.maxTokensParam}
-            allowDeselect={false}
-            onChange={(v) => v && set({ maxTokensParam: v as Model["maxTokensParam"] })}
-          />
+          {protocol === "openai" && (
+            <Select
+              label="Length parameter"
+              data={["max_tokens", "max_completion_tokens"]}
+              value={m.maxTokensParam}
+              allowDeselect={false}
+              onChange={(v) => v && set({ maxTokensParam: v as Model["maxTokensParam"] })}
+            />
+          )}
         </Group>
         <Group grow>
           <Select
@@ -173,7 +189,13 @@ export function ModelModal({
         </Group>
         <JsonField
           label="Reasoning on (added to the request)"
-          description='{{effort}} and {{budget}} are replaced with the step settings, e.g. {"reasoning_effort": "{{effort}}"}.'
+          description={
+            protocol === "ollama"
+              ? 'Ollama: {"think": true}, or {"think": "{{effort}}"} for gpt-oss models.'
+              : protocol === "anthropic"
+                ? 'Anthropic: {"thinking": {"type": "adaptive"}, "output_config": {"effort": "{{effort}}"}}.'
+                : '{{effort}} and {{budget}} are replaced with the step settings, e.g. {"reasoning_effort": "{{effort}}"}.'
+          }
           value={m.reasoningTemplates.onEnabled}
           onChange={(v, ok) => {
             setJsonOk((s) => ({ ...s, on: ok }));
@@ -182,35 +204,65 @@ export function ModelModal({
         />
         <JsonField
           label="Reasoning off (added to the request)"
-          description='e.g. {"reasoning_effort": "none"}. Empty = send nothing.'
+          description={
+            protocol === "ollama"
+              ? 'Ollama: {"think": false}. Empty = send nothing.'
+              : protocol === "anthropic"
+                ? "Empty = the model's own default. Current Claude models think unless told otherwise, and some can't turn it off."
+                : 'e.g. {"reasoning_effort": "none"}. Empty = send nothing.'
+          }
           value={m.reasoningTemplates.onDisabled}
           onChange={(v, ok) => {
             setJsonOk((s) => ({ ...s, off: ok }));
             if (ok) set({ reasoningTemplates: { ...m.reasoningTemplates, onDisabled: v } });
           }}
         />
-        <Group grow>
-          <Select
-            label="Cache markers"
-            description="'anthropic' adds cache_control markers (Anthropic/Gemini models via OpenRouter)."
-            data={["none", "anthropic"]}
-            value={m.cacheMarkers}
-            allowDeselect={false}
-            onChange={(v) => v && set({ cacheMarkers: v as Model["cacheMarkers"] })}
-          />
-          <Select
-            label="Cache lifetime"
-            data={["5m", "1h"]}
-            value={m.cacheMarkerTtl}
-            allowDeselect={false}
-            onChange={(v) => v && set({ cacheMarkerTtl: v as Model["cacheMarkerTtl"] })}
-          />
-          <Switch
-            label="Send prompt cache key"
-            checked={m.sendPromptCacheKey}
-            onChange={(e) => set({ sendPromptCacheKey: e.currentTarget.checked })}
-          />
-        </Group>
+        {protocol === "anthropic" && (
+          <Group grow>
+            <Select
+              label="Prompt caching"
+              description="Marks the stable parts of each request for caching."
+              data={[
+                { value: "anthropic", label: "On" },
+                { value: "none", label: "Off" },
+              ]}
+              value={m.cacheMarkers}
+              allowDeselect={false}
+              onChange={(v) => v && set({ cacheMarkers: v as Model["cacheMarkers"] })}
+            />
+            <Select
+              label="Cache lifetime"
+              data={["5m", "1h"]}
+              value={m.cacheMarkerTtl}
+              allowDeselect={false}
+              onChange={(v) => v && set({ cacheMarkerTtl: v as Model["cacheMarkerTtl"] })}
+            />
+          </Group>
+        )}
+        {protocol === "openai" && (
+          <Group grow>
+            <Select
+              label="Cache markers"
+              description="'anthropic' adds cache_control markers (Anthropic/Gemini models via OpenRouter)."
+              data={["none", "anthropic"]}
+              value={m.cacheMarkers}
+              allowDeselect={false}
+              onChange={(v) => v && set({ cacheMarkers: v as Model["cacheMarkers"] })}
+            />
+            <Select
+              label="Cache lifetime"
+              data={["5m", "1h"]}
+              value={m.cacheMarkerTtl}
+              allowDeselect={false}
+              onChange={(v) => v && set({ cacheMarkerTtl: v as Model["cacheMarkerTtl"] })}
+            />
+            <Switch
+              label="Send prompt cache key"
+              checked={m.sendPromptCacheKey}
+              onChange={(e) => set({ sendPromptCacheKey: e.currentTarget.checked })}
+            />
+          </Group>
+        )}
         <Divider label="Prices (USD per million tokens, optional)" labelPosition="left" />
         <Group grow>
           {(["inputPerM", "cachedInputPerM", "cacheWritePerM", "outputPerM"] as const).map(

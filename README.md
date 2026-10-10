@@ -4,9 +4,10 @@ Trainslator translates EPUB books with AI. It learns from books that already hav
 translation, then uses what it learned when it translates a new book, and writes an EPUB in
 the target language with the original formatting.
 
-It runs on your own computer: a local server with a browser UI. It talks to any
-OpenAI-compatible API (OpenAI, OpenRouter, DeepSeek, Gemini, Ollama, vLLM and others). Your
-books, knowledge bases and logs stay in a folder on your disk.
+It runs on your own computer: a local server with a browser UI. It talks to Anthropic's API,
+to Ollama (on your computer or on Ollama Cloud) through Ollama's own API, and to any
+OpenAI-compatible API (OpenAI, OpenRouter, DeepSeek, Gemini, vLLM and others). Your books,
+knowledge bases and logs stay in a folder on your disk.
 
 ## How it works
 
@@ -35,7 +36,8 @@ target can be any language, including right-to-left ones.
   `.nvmrc`.
 - **pnpm 12.** With Corepack: `corepack enable`. pnpm then picks the version pinned in
   `package.json`.
-- **An API key** for an OpenAI-compatible provider, or a local server such as Ollama or vLLM.
+- **An API key** for Anthropic, Ollama Cloud or an OpenAI-compatible provider, or a local
+  server such as Ollama or vLLM.
 
 ## Getting started
 
