@@ -1,104 +1,50 @@
-import {
-  Alert,
-  Anchor,
-  Badge,
-  Breadcrumbs,
-  Button,
-  Group,
-  Loader,
-  Stack,
-  Tabs,
-  Text,
-  Title,
-} from "@mantine/core";
-import { notifications } from "@mantine/notifications";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useNavigate, useParams } from "react-router";
-import { del, get } from "../api/client.ts";
-import { DiagnosticsList } from "../components/DiagnosticsList.tsx";
+import { Alert, Loader } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
+import { Navigate, useParams } from "react-router";
+import { get } from "../api/client.ts";
+import { PageHeader } from "../components/PageHeader.tsx";
+import { displayTitle } from "../lib/format.ts";
+import { defaultPairStage, PAIR_STAGES } from "../lib/stages.ts";
 import { KbEditor } from "./kb/KbEditor.tsx";
-import { useProject } from "./ProjectPage.tsx";
 import { AlignmentPanel, type PairDetail } from "./pair/AlignmentPanel.tsx";
 import { Phase1Panel } from "./pair/Phase1Panel.tsx";
 
 export function PairPage() {
-  const { pid = "", pairId = "" } = useParams();
-  const navigate = useNavigate();
-  const client = useQueryClient();
-  const project = useProject(pid);
+  const { pid = "", pairId = "", stage } = useParams();
   const { data, isLoading, error } = useQuery({
     queryKey: ["pair", pairId],
     queryFn: () => get<PairDetail>(`/api/projects/${pid}/pairs/${pairId}`),
   });
-  if (isLoading) return <Loader />;
+  if (isLoading) return <Loader size="sm" mt="xl" />;
   if (error || !data)
-    return <Alert color="red">{(error as Error)?.message ?? "Pair not found."}</Alert>;
-  const diagnostics = [...data.source.diagnostics, ...data.target.diagnostics];
+    return (
+      <Alert color="red" mt="xl">
+        {(error as Error)?.message ?? "Pair not found."}
+      </Alert>
+    );
+  const def = PAIR_STAGES.find((s) => s.key === stage);
+  if (!def)
+    return (
+      <Navigate to={`/projects/${pid}/pairs/${pairId}/${defaultPairStage(data.pair)}`} replace />
+    );
+  const descriptions: Record<string, string> = {
+    alignment:
+      "Which chapter of the English book matches which chapter of the translation. Check the rows, untick what phase 1 should skip (front matter, notes, a licence), then confirm.",
+    learn:
+      "Phase 1. The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
+    kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when phase 1 runs again.",
+  };
 
   return (
-    <Stack>
-      <Breadcrumbs>
-        <Anchor component={Link} to="/projects">
-          Projects
-        </Anchor>
-        <Anchor component={Link} to={`/projects/${pid}`}>
-          {project.data?.project.name ?? "Project"}
-        </Anchor>
-        <Text>{data.pair.title}</Text>
-      </Breadcrumbs>
-      <Group justify="space-between">
-        <div>
-          <Title order={2}>{data.pair.title}</Title>
-          <Text size="sm" c="dimmed">
-            Reference pair · {data.pair.sourceFileName} ({data.source.totalWords.toLocaleString()}{" "}
-            words) + {data.pair.targetFileName} ({data.target.totalWords.toLocaleString()} words)
-          </Text>
-        </div>
-        <Group>
-          <Badge variant="light" color={data.alignment.status === "confirmed" ? "green" : "yellow"}>
-            alignment {data.alignment.status}
-          </Badge>
-          <Button
-            variant="subtle"
-            color="red"
-            onClick={async () => {
-              if (!window.confirm("Delete this reference pair and its knowledge base?")) return;
-              try {
-                await del(`/api/projects/${pid}/pairs/${pairId}`);
-                await client.invalidateQueries({ queryKey: ["project", pid] });
-                navigate(`/projects/${pid}`);
-              } catch (e) {
-                notifications.show({
-                  color: "red",
-                  title: "Couldn't delete",
-                  message: (e as Error).message,
-                });
-              }
-            }}
-          >
-            Delete pair
-          </Button>
-        </Group>
-      </Group>
-      {diagnostics.length > 0 && <DiagnosticsList diagnostics={diagnostics} />}
-      <Tabs defaultValue="alignment" keepMounted={false}>
-        <Tabs.List>
-          <Tabs.Tab value="alignment">1 · Chapter alignment</Tabs.Tab>
-          <Tabs.Tab value="phase1" disabled={data.alignment.status !== "confirmed"}>
-            2 · Phase 1
-          </Tabs.Tab>
-          <Tabs.Tab value="kb">3 · Knowledge base</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="alignment" pt="md">
-          <AlignmentPanel pid={pid} detail={data} />
-        </Tabs.Panel>
-        <Tabs.Panel value="phase1" pt="md">
-          <Phase1Panel pid={pid} pairId={pairId} />
-        </Tabs.Panel>
-        <Tabs.Panel value="kb" pt="md">
-          <KbEditor pid={pid} scope="pair" targetId={pairId} />
-        </Tabs.Panel>
-      </Tabs>
-    </Stack>
+    <>
+      <PageHeader
+        context={displayTitle(data.pair.title)}
+        title={def.label}
+        description={descriptions[def.key]}
+      />
+      {def.key === "alignment" && <AlignmentPanel pid={pid} detail={data} />}
+      {def.key === "learn" && <Phase1Panel pid={pid} pairId={pairId} />}
+      {def.key === "kb" && <KbEditor pid={pid} scope="pair" targetId={pairId} />}
+    </>
   );
 }

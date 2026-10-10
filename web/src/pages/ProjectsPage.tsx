@@ -1,17 +1,16 @@
 import {
   Alert,
-  Badge,
+  Anchor,
+  Box,
   Button,
-  Card,
   Group,
+  List,
   Loader,
   Modal,
   Select,
-  SimpleGrid,
   Stack,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +18,8 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
 import { get, post } from "../api/client.ts";
 import type { Project, ProjectSummary } from "../api/types.ts";
+import { PageHeader } from "../components/PageHeader.tsx";
+import { listText, plural, relativeTime } from "../lib/format.ts";
 
 function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const navigate = useNavigate();
@@ -53,24 +54,20 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
     <Modal opened={opened} onClose={onClose} title="New project">
       <Stack>
         <Text size="sm" c="dimmed">
-          A project translates books from English into one target language. Reference pairs and
-          books are added inside it.
+          A project translates books from English into one language. You add reference pairs and
+          books inside it.
         </Text>
         <TextInput
           label="Name"
           placeholder="e.g. Fantasy series into Polish"
           value={name}
           onChange={(e) => setName(e.currentTarget.value)}
-        />
-        <TextInput
-          label="Source language"
-          value="English"
-          disabled
-          description="Only English is supported for now."
+          data-autofocus
         />
         <Select
-          label="Target language"
-          placeholder="Search or type a language code"
+          label="Translate into"
+          description="The books are translated from English, the only source language for now."
+          placeholder="Search, or type a language code"
           searchable
           data={options}
           value={target}
@@ -79,7 +76,7 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
           onSearchChange={setSearch}
           nothingFoundMessage="Type a language code such as pl, pt-BR or zh-Hant"
         />
-        <Group justify="flex-end">
+        <Group justify="flex-end" mt="sm">
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
@@ -107,11 +104,39 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
               }
             }}
           >
-            Create
+            Create project
           </Button>
         </Group>
       </Stack>
     </Modal>
+  );
+}
+
+function FirstSteps({ onCreate }: { onCreate: () => void }) {
+  return (
+    <Box maw={620}>
+      <Text size="lg" className="serif" mb="md">
+        Three steps to a first translation:
+      </Text>
+      <List type="ordered" spacing="sm" size="md">
+        <List.Item>
+          <Anchor component={Link} to="/settings">
+            Connect an AI provider
+          </Anchor>{" "}
+          in Settings, add a model, and choose it for each step.
+        </List.Item>
+        <List.Item>
+          <Anchor component="button" onClick={onCreate}>
+            Create a project
+          </Anchor>{" "}
+          for the language you translate into.
+        </List.Item>
+        <List.Item>
+          Add reference pairs (an English book with its published translation), then the book you
+          want translated.
+        </List.Item>
+      </List>
+    </Box>
   );
 }
 
@@ -122,54 +147,40 @@ export function ProjectsPage() {
     queryFn: () => get<{ projects: ProjectSummary[] }>("/api/projects"),
   });
   return (
-    <Stack>
-      <Group justify="space-between">
-        <Title order={2}>Projects</Title>
-        <Button onClick={() => setOpen(true)}>New project</Button>
-      </Group>
-      {isLoading && <Loader />}
+    <>
+      <PageHeader
+        title="Projects"
+        description="Each project translates books from English into one language, learning from the reference pairs you give it."
+        actions={<Button onClick={() => setOpen(true)}>New project</Button>}
+      />
+      {isLoading && <Loader size="sm" />}
       {error && <Alert color="red">{(error as Error).message}</Alert>}
-      {data && data.projects.length === 0 && (
-        <Alert title="Start here" color="blue">
-          <Stack gap="xs">
-            <Text size="sm">
-              1. In Settings, add a connection to an AI provider, add models and choose a model for
-              each step.
-            </Text>
-            <Text size="sm">2. Create a project for your target language.</Text>
-            <Text size="sm">
-              3. Add reference pairs (an English book and its human translation) and the book you
-              want translated.
-            </Text>
-          </Stack>
-        </Alert>
+      {data && data.projects.length === 0 && <FirstSteps onCreate={() => setOpen(true)} />}
+      {data && data.projects.length > 0 && (
+        <Box maw={860} className="tr-list-flush">
+          {data.projects.map((p) => {
+            const contents = [
+              p.bookCount > 0 ? plural(p.bookCount, "book") : null,
+              p.pairCount > 0 ? plural(p.pairCount, "reference pair") : null,
+            ].filter((x): x is string => x !== null);
+            return (
+              <Link key={p.id} to={`/projects/${p.id}`} className="tr-row-link">
+                <Group justify="space-between" align="baseline" wrap="nowrap" gap="md">
+                  <div className="tr-row-title">{p.name}</div>
+                  <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                    Updated {relativeTime(p.updatedAt)}
+                  </Text>
+                </Group>
+                <Text size="sm" c="dimmed" mt={4}>
+                  English into {p.targetLangName}.{" "}
+                  {contents.length > 0 ? `${listText(contents)}.` : "Nothing added yet."}
+                </Text>
+              </Link>
+            );
+          })}
+        </Box>
       )}
-      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-        {data?.projects.map((p) => (
-          <Card
-            key={p.id}
-            withBorder
-            component={Link}
-            to={`/projects/${p.id}`}
-            style={{ textDecoration: "none" }}
-          >
-            <Stack gap={6}>
-              <Group justify="space-between">
-                <Text fw={600}>{p.name}</Text>
-                <Badge variant="light">English → {p.targetLangName}</Badge>
-              </Group>
-              <Text size="sm" c="dimmed">
-                {p.pairCount} reference pair{p.pairCount === 1 ? "" : "s"} · {p.bookCount} book
-                {p.bookCount === 1 ? "" : "s"}
-              </Text>
-              <Text size="xs" c="dimmed">
-                Updated {new Date(p.updatedAt).toLocaleString()}
-              </Text>
-            </Stack>
-          </Card>
-        ))}
-      </SimpleGrid>
       <NewProjectModal opened={open} onClose={() => setOpen(false)} />
-    </Stack>
+    </>
   );
 }

@@ -1,6 +1,5 @@
 import {
   Alert,
-  Badge,
   Button,
   Checkbox,
   Code,
@@ -15,6 +14,7 @@ import { useState } from "react";
 import type { Connection, Model } from "../../../../src/shared/schemas/settings.ts";
 import { post } from "../../api/client.ts";
 import type { ProbeReport } from "../../api/types.ts";
+import { StageMark } from "../../components/StageMark.tsx";
 
 export function TestModal({
   opened,
@@ -80,13 +80,10 @@ export function TestModal({
             <Table.Tbody>
               {report.checks.map((c) => (
                 <Table.Tr key={c.name}>
-                  <Table.Td w={90}>
-                    <Badge
-                      color={c.ok === true ? "green" : c.ok === false ? "red" : "gray"}
-                      variant="light"
-                    >
-                      {c.ok === true ? "OK" : c.ok === false ? "Problem" : "Note"}
-                    </Badge>
+                  <Table.Td w={28} style={{ verticalAlign: "top", paddingTop: 12 }}>
+                    <StageMark
+                      state={c.ok === true ? "done" : c.ok === false ? "attention" : "neutral"}
+                    />
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" fw={500}>

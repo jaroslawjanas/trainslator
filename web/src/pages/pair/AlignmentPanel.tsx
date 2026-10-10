@@ -1,7 +1,7 @@
 import {
   ActionIcon,
   Alert,
-  Badge,
+  Box,
   Button,
   Checkbox,
   Group,
@@ -15,13 +15,20 @@ import {
   Table,
   Text,
   Tooltip,
+  UnstyledButton,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { IconArrowDown, IconArrowUp, IconChevronDown, IconDots } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 import type { Alignment, AlignUnit } from "../../../../src/shared/schemas/alignment.ts";
 import type { EpubStructure, Segment } from "../../../../src/shared/schemas/epub.ts";
-import { get, post, put } from "../../api/client.ts";
+import { del, get, post, put } from "../../api/client.ts";
+import { DiagnosticsList } from "../../components/DiagnosticsList.tsx";
+import { Section } from "../../components/PageHeader.tsx";
+import { StageMark } from "../../components/StageMark.tsx";
+import { displayTitle } from "../../lib/format.ts";
 import {
   mergeWithNext,
   moveFirstToPrevious,
@@ -37,7 +44,7 @@ export interface PairDetail {
     title: string;
     sourceFileName: string;
     targetFileName: string;
-    phase1: { state: string; entries: number | null };
+    phase1: { state: string; finishedAt: string | null; entries: number | null };
   };
   source: EpubStructure;
   target: EpubStructure;
@@ -72,7 +79,7 @@ function SegmentList({
   if (ids.length === 0) {
     return (
       <Text size="sm" c="dimmed" fs="italic">
-        (nothing)
+        nothing on this side
       </Text>
     );
   }
@@ -82,28 +89,30 @@ function SegmentList({
         const s = segments.get(id);
         return (
           <Group key={id} gap={4} wrap="nowrap">
-            <Text
-              size="sm"
-              lineClamp={1}
-              style={{ flex: 1 }}
-              c={s?.guess === "body" ? undefined : "dimmed"}
-            >
-              {s?.title ?? id}
-              <Text span size="xs" c="dimmed">
-                {" "}
-                · {s?.words.toLocaleString() ?? "?"} words
-                {s && s.guess !== "body" ? ` · ${s.guess}` : ""}
+            <Box style={{ flex: 1, minWidth: 0 }}>
+              <Text
+                size="md"
+                lineClamp={1}
+                className="serif"
+                c={s?.guess === "body" ? undefined : "dimmed"}
+              >
+                {s ? displayTitle(s.title) : id}
               </Text>
-            </Text>
+              <Text size="xs" c="dimmed" className="num">
+                {s?.words.toLocaleString() ?? "?"} words
+                {s && s.guess !== "body" ? `, ${s.guess} matter` : ""}
+              </Text>
+            </Box>
             {k === 0 && canUp && (
               <Tooltip label="Move to the previous row">
                 <ActionIcon
                   size="xs"
                   variant="subtle"
+                  color="gray"
                   onClick={onUp}
                   aria-label="Move to previous row"
                 >
-                  ↑
+                  <IconArrowUp size={13} />
                 </ActionIcon>
               </Tooltip>
             )}
@@ -112,10 +121,11 @@ function SegmentList({
                 <ActionIcon
                   size="xs"
                   variant="subtle"
+                  color="gray"
                   onClick={onDown}
                   aria-label="Move to next row"
                 >
-                  ↓
+                  <IconArrowDown size={13} />
                 </ActionIcon>
               </Tooltip>
             )}
@@ -146,11 +156,12 @@ function PreviewModal({
     <Stack gap="xs">
       <Text fw={600}>{title}</Text>
       <Text size="xs" c="dimmed">
-        {p.titles.join(" + ") || "(nothing)"} · {p.words.toLocaleString()} words
+        {p.titles.map(displayTitle).join(" + ") || "nothing on this side"},{" "}
+        {p.words.toLocaleString()} words
       </Text>
       <Paper withBorder p="sm">
         <ScrollArea h={260}>
-          <Text size="sm" className="unit-text">
+          <Text size="md" className="serif" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
             {p.start}
           </Text>
         </ScrollArea>
@@ -162,7 +173,7 @@ function PreviewModal({
           </Text>
           <Paper withBorder p="sm">
             <ScrollArea h={160}>
-              <Text size="sm" className="unit-text">
+              <Text size="md" className="serif" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
                 {p.end}
               </Text>
             </ScrollArea>
@@ -187,6 +198,8 @@ function PreviewModal({
 
 export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetail }) {
   const client = useQueryClient();
+  const navigate = useNavigate();
+  const diagnostics = [...detail.source.diagnostics, ...detail.target.diagnostics];
   const [units, setUnits] = useState<AlignUnit[]>(detail.alignment.units);
   const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -249,89 +262,104 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
       label: i + 1 === 1 ? "Top level" : `Down to level ${i + 1}`,
     }));
 
+  const statusText =
+    al.status === "confirmed" && !dirty
+      ? "Confirmed"
+      : dirty
+        ? "Unsaved changes"
+        : "Not confirmed yet";
+
   return (
-    <Stack>
-      <Text size="sm" c="dimmed">
-        Each row pairs a chapter of the English book with the matching chapter of the translation.
-        Check the rows, fix them with the arrows and the row menu, untick what phase 1 should skip
-        (front matter, notes …), then confirm. Click a row's words to compare the text.
-      </Text>
-      <Group justify="space-between" align="flex-end">
-        <Group align="flex-end">
+    <Stack gap="lg">
+      <Group justify="space-between" align="flex-end" gap="md">
+        <Group align="flex-end" gap="sm">
           <Select
-            label="English chapters from TOC"
+            label="English chapters"
+            w={190}
             data={depthOptions(detail.source.maxDepth)}
             value={String(al.tocDepthSource)}
             allowDeselect={false}
             onChange={(v) => v && repropose(Number(v), al.tocDepthTarget)}
           />
           <Select
-            label="Translation chapters from TOC"
+            label="Translated chapters"
+            w={190}
             data={depthOptions(detail.target.maxDepth)}
             value={String(al.tocDepthTarget)}
             allowDeselect={false}
             onChange={(v) => v && repropose(al.tocDepthSource, Number(v))}
           />
-          <Button variant="subtle" onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget)}>
-            Propose again
-          </Button>
-          <Tooltip
-            multiline
-            w={300}
-            label="Asks the utility model to match the chapters by their titles, opening words and lengths. Useful when the books differ in content (extra stories, notes, a licence). One short request."
-          >
-            <Button
-              variant="light"
-              loading={asking}
-              onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget, true)}
-            >
-              Propose with AI
-            </Button>
-          </Tooltip>
+          <Menu position="bottom-start" width={320}>
+            <Menu.Target>
+              <Button
+                variant="default"
+                loading={asking}
+                rightSection={<IconChevronDown size={14} />}
+              >
+                Propose again
+              </Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget)}>
+                <Text size="sm">By chapter length</Text>
+                <Text size="xs" c="dimmed">
+                  Instant, no AI. Works when both books have the same contents.
+                </Text>
+              </Menu.Item>
+              <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget, true)}>
+                <Text size="sm">With AI</Text>
+                <Text size="xs" c="dimmed">
+                  Matches titles and opening lines. Better when the books differ (extra stories,
+                  notes, a licence). One short request.
+                </Text>
+              </Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
         </Group>
-        <Group>
-          <Badge
-            color={al.status === "confirmed" && !dirty ? "green" : "yellow"}
-            variant="light"
-            size="lg"
-          >
-            {al.status === "confirmed" && !dirty
-              ? "confirmed"
-              : dirty
-                ? "unsaved changes"
-                : "not confirmed"}
-          </Badge>
-          <Button variant="default" disabled={!dirty} onClick={() => setUnits(al.units)}>
-            Undo
-          </Button>
-          <Button
-            variant="light"
-            disabled={!dirty}
-            loading={saving}
-            onClick={() => save(al.status === "confirmed" ? "confirmed" : "proposed")}
-          >
-            Save
-          </Button>
-          <Button
-            loading={saving}
-            disabled={included.length === 0}
-            onClick={() => save("confirmed")}
-          >
-            Confirm alignment
-          </Button>
+        <Group gap="xs">
+          <Group gap={6} mr="xs">
+            <StageMark state={al.status === "confirmed" && !dirty ? "done" : "none"} />
+            <Text size="sm" c={al.status === "confirmed" && !dirty ? undefined : "dimmed"}>
+              {statusText}
+            </Text>
+          </Group>
+          {dirty && (
+            <>
+              <Button variant="subtle" color="gray" onClick={() => setUnits(al.units)}>
+                Undo
+              </Button>
+              <Button
+                variant="default"
+                loading={saving}
+                onClick={() => save(al.status === "confirmed" ? "confirmed" : "proposed")}
+              >
+                Save
+              </Button>
+            </>
+          )}
+          {(dirty || al.status !== "confirmed") && (
+            <Button
+              loading={saving}
+              disabled={included.length === 0}
+              onClick={() => save("confirmed")}
+            >
+              Confirm alignment
+            </Button>
+          )}
         </Group>
       </Group>
-      <Text size="sm">
-        {included.length} of {units.length} rows included · length ratio of the translation:{" "}
-        {detail.ratio.toFixed(2)}×
+      <Text size="sm" c="dimmed">
+        {included.length} of {units.length} rows are used for learning. The translation is about{" "}
+        {detail.ratio.toFixed(2)} times as long as the English; the length column compares each row
+        with that.
       </Text>
-      <Table striped highlightOnHover verticalSpacing="xs">
+      <Table highlightOnHover verticalSpacing="sm">
         <Table.Thead>
           <Table.Tr>
-            <Table.Th w={40}>Use</Table.Th>
+            <Table.Th w={44}>Use</Table.Th>
             <Table.Th>English</Table.Th>
             <Table.Th>Translation</Table.Th>
-            <Table.Th w={110}>Length match</Table.Th>
+            <Table.Th w={110}>Length</Table.Th>
             <Table.Th w={60} />
           </Table.Tr>
         </Table.Thead>
@@ -342,9 +370,9 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
             const rel = wa > 0 && wb > 0 ? wb / detail.ratio / wa : null;
             const color =
               rel === null
-                ? "gray"
+                ? "dimmed"
                 : rel > 0.75 && rel < 1.33
-                  ? "green"
+                  ? undefined
                   : rel > 0.5 && rel < 2
                     ? "yellow"
                     : "red";
@@ -378,27 +406,31 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
                   />
                 </Table.Td>
                 <Table.Td>
-                  <Tooltip label="Compare the text" withArrow>
-                    <Badge
-                      color={color}
-                      variant="light"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => setPreview(u.id)}
+                  <UnstyledButton onClick={() => setPreview(u.id)} aria-label="Compare the text">
+                    <Text
+                      size="sm"
+                      c={color}
+                      className="num"
+                      td="underline"
+                      style={{
+                        textDecorationColor: "var(--tr-rule-strong)",
+                        textUnderlineOffset: 3,
+                      }}
                     >
                       {rel === null ? "one side" : `${Math.round(rel * 100)}%`}
-                    </Badge>
-                  </Tooltip>
+                    </Text>
+                  </UnstyledButton>
                   {u.confidence !== null && (
                     <Text size="xs" c="dimmed">
-                      confidence {Math.round(u.confidence * 100)}%
+                      {Math.round(u.confidence * 100)}% sure
                     </Text>
                   )}
                 </Table.Td>
                 <Table.Td>
                   <Menu position="bottom-end" withinPortal>
                     <Menu.Target>
-                      <ActionIcon variant="subtle" aria-label="Row actions">
-                        ⋯
+                      <ActionIcon variant="subtle" color="gray" aria-label="Row actions">
+                        <IconDots size={16} />
                       </ActionIcon>
                     </Menu.Target>
                     <Menu.Dropdown>
@@ -435,6 +467,38 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
         unitId={preview}
         onClose={() => setPreview(null)}
       />
+      <Box mt={48}>
+        {diagnostics.length > 0 && (
+          <Section title="Notes about the files">
+            <DiagnosticsList diagnostics={diagnostics} />
+          </Section>
+        )}
+        <Section
+          title="Delete this pair"
+          description="Deletes the two books and what was learned from them. Books that used this pair keep their own knowledge bases."
+        >
+          <Button
+            color="red"
+            variant="outline"
+            onClick={async () => {
+              if (!window.confirm("Delete this reference pair and its knowledge base?")) return;
+              try {
+                await del(`/api/projects/${pid}/pairs/${detail.pair.id}`);
+                await client.invalidateQueries({ queryKey: ["project", pid] });
+                navigate(`/projects/${pid}`);
+              } catch (e) {
+                notifications.show({
+                  color: "red",
+                  title: "Couldn't delete",
+                  message: (e as Error).message,
+                });
+              }
+            }}
+          >
+            Delete pair
+          </Button>
+        </Section>
+      </Box>
     </Stack>
   );
 }

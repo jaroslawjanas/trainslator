@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Alert,
-  Badge,
   Button,
   Drawer,
   Group,
@@ -12,6 +11,7 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
+import { IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { KB_KINDS, KB_TREATMENTS, type KbEntry } from "../../../../src/shared/schemas/kb.ts";
 
@@ -51,34 +51,31 @@ export function EntryDrawer({
       position="right"
       size="lg"
       title={isNew ? "New entry" : e.source}
+      styles={{ title: { fontFamily: "var(--tr-serif)" } }}
     >
       <Stack>
         {!isNew && (
-          <Group gap="xs">
-            <Badge
-              color={e.status === "locked" ? "grape" : e.status === "open" ? "orange" : "gray"}
-              variant="light"
-            >
-              {e.status}
-            </Badge>
-            <Badge variant="outline" color="gray">
-              from {e.origin}
-            </Badge>
-            {e.refs.length > 0 && (
-              <Text size="xs" c="dimmed">
-                seen in {e.refs.length} chapter{e.refs.length === 1 ? "" : "s"}
-              </Text>
-            )}
-          </Group>
+          <Text size="sm" c="dimmed">
+            {e.status === "locked"
+              ? "Locked: set by you and kept when phases run again."
+              : e.status === "open"
+                ? "Open: the AI couldn't decide this yet."
+                : "Added automatically."}{" "}
+            {e.origin === "user"
+              ? "You added it."
+              : `Found in ${e.origin === "phase1" ? "the reference pair" : "this book"}${e.refs.length > 0 ? `, in ${e.refs.length} chapter${e.refs.length === 1 ? "" : "s"}` : ""}.`}
+          </Text>
         )}
         {e.status === "open" && e.question && (
-          <Alert color="orange" title="Open question">
+          <Alert color="yellow" title="Open question">
             {e.question}
           </Alert>
         )}
-        <Text size="xs" c="dimmed">
-          Saving locks the entry: later automatic runs keep it exactly as you set it.
-        </Text>
+        {e.status !== "locked" && (
+          <Text size="xs" c="dimmed">
+            Saving locks the entry: later runs keep it exactly as you set it.
+          </Text>
+        )}
         <Group grow>
           <Select
             label="Kind"
@@ -160,7 +157,7 @@ export function EntryDrawer({
                 aria-label="Remove"
                 onClick={() => set({ attributes: e.attributes.filter((_, j) => j !== i) })}
               >
-                ×
+                <IconX size={14} />
               </ActionIcon>
             </Group>
           ))}
@@ -179,8 +176,8 @@ export function EntryDrawer({
             </Text>
             {e.examples.map((x, i) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: static list
-              <Text key={i} size="sm" c="dimmed">
-                “{x.source}”{x.target ? ` → “${x.target}”` : ""}
+              <Text key={i} size="sm" c="dimmed" className="serif">
+                “{x.source}”{x.target ? ` becomes “${x.target}”` : ""}
               </Text>
             ))}
           </Stack>
@@ -192,6 +189,7 @@ export function EntryDrawer({
                 variant="subtle"
                 color="red"
                 loading={busy}
+                px="xs"
                 onClick={() =>
                   window.confirm("Delete this entry? Automatic runs won't add it back.") &&
                   act(() => onDelete(e))

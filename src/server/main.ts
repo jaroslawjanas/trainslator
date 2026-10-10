@@ -10,7 +10,10 @@ const port = Number(process.env.PORT ?? 5174);
 const hostname = "127.0.0.1";
 const dataDir = defaultDataDir();
 
-const ctx = await createContext({ dataDir, port, handlers: jobHandlers });
+// The Vite dev server's port, allowed as a browser origin (see vite.config.ts).
+const webPort = Number(process.env.WEB_PORT ?? 5173);
+
+const ctx = await createContext({ dataDir, port, devPorts: [webPort], handlers: jobHandlers });
 
 const webDir = path.resolve("dist", "web");
 let staticDir: string | undefined;

@@ -1,21 +1,15 @@
 import {
   Alert,
-  Anchor,
-  Badge,
-  Breadcrumbs,
+  Box,
   Button,
-  Card,
   FileInput,
   Group,
   Loader,
   Modal,
   Stack,
   Switch,
-  Table,
-  Tabs,
   Text,
   TextInput,
-  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,7 +17,11 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { del, get, patch, post, upload } from "../api/client.ts";
 import type { Book, Job, Pair, ProjectDetail } from "../api/types.ts";
-import { JobRow, useJobs } from "../components/JobsIndicator.tsx";
+import { useJobs } from "../components/JobsIndicator.tsx";
+import { PageHeader, Section } from "../components/PageHeader.tsx";
+import { StageMark } from "../components/StageMark.tsx";
+import { displayTitle, plural } from "../lib/format.ts";
+import { BOOK_STAGES, type MarkState, PAIR_STAGES } from "../lib/stages.ts";
 import { LanguageNotesPanel } from "./project/LanguageNotesPanel.tsx";
 import { UsagePanel } from "./project/UsagePanel.tsx";
 
@@ -31,25 +29,8 @@ export function useProject(pid: string) {
   return useQuery({
     queryKey: ["project", pid],
     queryFn: () => get<ProjectDetail>(`/api/projects/${pid}`),
+    enabled: Boolean(pid),
   });
-}
-
-function phaseBadge(state: string, label: string) {
-  const color =
-    state === "done"
-      ? "green"
-      : state === "running"
-        ? "blue"
-        : state === "failed"
-          ? "red"
-          : state === "done_with_errors"
-            ? "yellow"
-            : "gray";
-  return (
-    <Badge size="sm" variant="light" color={color}>
-      {label}: {state === "none" ? "not run" : state.replaceAll("_", " ")}
-    </Badge>
-  );
 }
 
 function UploadPairModal({
@@ -70,21 +51,24 @@ function UploadPairModal({
     <Modal opened={opened} onClose={onClose} title="Add a reference pair">
       <Stack>
         <Text size="sm" c="dimmed">
-          An English book and its published human translation. Both must be DRM-free EPUB files.
+          An English book and its published human translation, both as DRM-free EPUB files. The AI
+          learns the translator's choices from them.
         </Text>
         <FileInput
-          label="English original (EPUB)"
+          label="English original"
+          placeholder="Choose an EPUB file"
           accept=".epub,application/epub+zip"
           value={source}
           onChange={setSource}
         />
         <FileInput
-          label="Human translation (EPUB)"
+          label="Published translation"
+          placeholder="Choose an EPUB file"
           accept=".epub,application/epub+zip"
           value={target}
           onChange={setTarget}
         />
-        <Group justify="flex-end">
+        <Group justify="flex-end" mt="sm">
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
@@ -100,7 +84,7 @@ function UploadPairModal({
                 const res = await upload<{ pair: Pair }>(`/api/projects/${pid}/pairs`, form);
                 await client.invalidateQueries({ queryKey: ["project", pid] });
                 onClose();
-                navigate(`/projects/${pid}/pairs/${res.pair.id}`);
+                navigate(`/projects/${pid}/pairs/${res.pair.id}/alignment`);
               } catch (e) {
                 notifications.show({
                   color: "red",
@@ -137,12 +121,14 @@ function UploadBookModal({
     <Modal opened={opened} onClose={onClose} title="Add a book to translate">
       <Stack>
         <FileInput
-          label="English book (DRM-free EPUB)"
+          label="English book"
+          description="A DRM-free EPUB file."
+          placeholder="Choose an EPUB file"
           accept=".epub,application/epub+zip"
           value={file}
           onChange={setFile}
         />
-        <Group justify="flex-end">
+        <Group justify="flex-end" mt="sm">
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
@@ -157,7 +143,7 @@ function UploadBookModal({
                 const res = await upload<{ book: Book }>(`/api/projects/${pid}/books`, form);
                 await client.invalidateQueries({ queryKey: ["project", pid] });
                 onClose();
-                navigate(`/projects/${pid}/books/${res.book.id}`);
+                navigate(`/projects/${pid}/books/${res.book.id}/setup`);
               } catch (e) {
                 notifications.show({
                   color: "red",
@@ -177,6 +163,115 @@ function UploadBookModal({
   );
 }
 
+function Steps({ items }: { items: { label: string; mark: MarkState }[] }) {
+  return (
+    <div className="tr-steps">
+      {items.map((s) => (
+        <span key={s.label} className="tr-step" data-state={s.mark}>
+          <StageMark state={s.mark} />
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Overview({
+  detail,
+  jobs,
+  onAddBook,
+  onAddPair,
+}: {
+  detail: ProjectDetail;
+  jobs: Job[];
+  onAddBook: () => void;
+  onAddPair: () => void;
+}) {
+  const { project, pairs, books } = detail;
+  const base = `/projects/${project.id}`;
+  return (
+    <>
+      <PageHeader
+        title={project.name}
+        description={`Translates books from English into ${project.targetLangName}, consistent with the reference pairs below.`}
+        actions={
+          <>
+            <Button variant="default" onClick={onAddPair}>
+              Add reference pair
+            </Button>
+            <Button onClick={onAddBook}>Add book</Button>
+          </>
+        }
+      />
+      <Box maw={920}>
+        <Section
+          title="Books"
+          description="Each book is read first (phase 2), then translated (phase 3) and built as a new EPUB."
+        >
+          {books.length === 0 ? (
+            <Text size="md" c="dimmed">
+              No books yet. Add the English book you want translated.
+            </Text>
+          ) : (
+            <div>
+              {books.map((b) => (
+                <Link key={b.id} to={`${base}/books/${b.id}`} className="tr-row-link">
+                  <div className="tr-row-title">{displayTitle(b.title)}</div>
+                  <Text size="xs" c="dimmed" mt={2} mb={8}>
+                    {b.sourceFileName}
+                  </Text>
+                  <Steps
+                    items={BOOK_STAGES.filter((s) =>
+                      ["read", "translate", "build"].includes(s.key),
+                    ).map((s) => ({ label: s.label, mark: s.mark({ book: b, jobs }) }))}
+                  />
+                </Link>
+              ))}
+            </div>
+          )}
+        </Section>
+        <Section
+          title="Reference pairs"
+          description="English books with their published translations. Phase 1 learns names, terms and style from them."
+        >
+          {pairs.length === 0 ? (
+            <Text size="md" c="dimmed">
+              No reference pairs yet. They're optional, but with them the translation follows the
+              choices of earlier human translators.
+            </Text>
+          ) : (
+            <div>
+              {pairs.map((p) => {
+                const learning = PAIR_STAGES.find((s) => s.key === "learn")!;
+                const mark = learning.mark({ pair: p, jobs });
+                return (
+                  <Link key={p.id} to={`${base}/pairs/${p.id}`} className="tr-row-link">
+                    <div className="tr-row-title">{displayTitle(p.title)}</div>
+                    <Text size="xs" c="dimmed" mt={2} mb={8}>
+                      {p.sourceFileName} with {p.targetFileName}
+                    </Text>
+                    <Steps
+                      items={[
+                        {
+                          label:
+                            p.phase1.entries !== null
+                              ? `Learned ${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}`
+                              : "Not learned yet",
+                          mark,
+                        },
+                      ]}
+                    />
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+      </Box>
+    </>
+  );
+}
+
 function ProjectOptions({ detail }: { detail: ProjectDetail }) {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -186,218 +281,132 @@ function ProjectOptions({ detail }: { detail: ProjectDetail }) {
     try {
       await patch(`/api/projects/${project.id}`, body);
       await client.invalidateQueries({ queryKey: ["project", project.id] });
+      await client.invalidateQueries({ queryKey: ["projects"] });
     } catch (e) {
       notifications.show({ color: "red", title: "Couldn't save", message: (e as Error).message });
     }
   };
   return (
-    <Stack maw={640}>
-      <Group align="flex-end">
-        <TextInput
-          label="Project name"
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          style={{ flex: 1 }}
-        />
-        <Button disabled={name === project.name || !name.trim()} onClick={() => save({ name })}>
-          Rename
-        </Button>
-      </Group>
-      <Switch
-        label="Pause for review after each phase"
-        description="When on, finished phases wait for you to check the knowledge base before the next one starts."
-        checked={project.options.pauseAfterPhase}
-        onChange={(e) => save({ pauseAfterPhase: e.currentTarget.checked })}
+    <>
+      <PageHeader
+        context={project.name}
+        contextTo={`/projects/${project.id}`}
+        title="Project settings"
       />
-      <Group>
-        <Button
-          variant="default"
-          onClick={async () => {
-            const res = await post<{ removed: number }>(`/api/projects/${project.id}/cache/clear`);
-            notifications.show({ message: `Cleared ${res.removed} cached answers.` });
-          }}
+      <Box maw={640}>
+        <Section title="Name">
+          <Group align="flex-end">
+            <TextInput
+              aria-label="Project name"
+              value={name}
+              onChange={(e) => setName(e.currentTarget.value)}
+              style={{ flex: 1 }}
+            />
+            <Button
+              variant="default"
+              disabled={name === project.name || !name.trim()}
+              onClick={() => save({ name })}
+            >
+              Rename
+            </Button>
+          </Group>
+        </Section>
+        <Section title="Review">
+          <Switch
+            label="Pause for review after each phase"
+            description="Finished phases wait for you to check the knowledge base before the next one starts."
+            checked={project.options.pauseAfterPhase}
+            onChange={(e) => save({ pauseAfterPhase: e.currentTarget.checked })}
+          />
+        </Section>
+        <Section
+          title="Saved AI answers"
+          description="Answers that passed the checks are kept and reused when exactly the same request repeats. Clear them to make every step ask again."
         >
-          Clear cached AI answers
-        </Button>
-        <Button
-          color="red"
-          variant="light"
-          onClick={async () => {
-            if (
-              !window.confirm(
-                `Delete "${project.name}" with all its books, knowledge bases and translations?`,
+          <Button
+            variant="default"
+            onClick={async () => {
+              const res = await post<{ removed: number }>(
+                `/api/projects/${project.id}/cache/clear`,
+              );
+              notifications.show({ message: `Cleared ${plural(res.removed, "saved answer")}.` });
+            }}
+          >
+            Clear saved answers
+          </Button>
+        </Section>
+        <Section
+          title="Delete project"
+          description="Deletes the project folder with all its books, knowledge bases and translations. This can't be undone."
+        >
+          <Button
+            color="red"
+            variant="outline"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  `Delete "${project.name}" with all its books, knowledge bases and translations?`,
+                )
               )
-            )
-              return;
-            try {
-              await del(`/api/projects/${project.id}`);
-              await client.invalidateQueries({ queryKey: ["projects"] });
-              navigate("/projects");
-            } catch (e) {
-              notifications.show({
-                color: "red",
-                title: "Couldn't delete",
-                message: (e as Error).message,
-              });
-            }
-          }}
-        >
-          Delete project
-        </Button>
-      </Group>
-    </Stack>
+                return;
+              try {
+                await del(`/api/projects/${project.id}`);
+                await client.invalidateQueries({ queryKey: ["projects"] });
+                navigate("/projects");
+              } catch (e) {
+                notifications.show({
+                  color: "red",
+                  title: "Couldn't delete",
+                  message: (e as Error).message,
+                });
+              }
+            }}
+          >
+            Delete project
+          </Button>
+        </Section>
+      </Box>
+    </>
   );
 }
 
 export function ProjectPage() {
-  const { pid = "" } = useParams();
+  const { pid = "", section = "" } = useParams();
   const { data, isLoading, error } = useProject(pid);
   const jobs = useJobs();
   const [pairOpen, setPairOpen] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
-  if (isLoading) return <Loader />;
+  if (isLoading) return <Loader size="sm" mt="xl" />;
   if (error || !data)
-    return <Alert color="red">{(error as Error)?.message ?? "Project not found."}</Alert>;
-  const { project, pairs, books } = data;
+    return (
+      <Alert color="red" mt="xl">
+        {(error as Error)?.message ?? "Project not found."}
+      </Alert>
+    );
   const projectJobs: Job[] = (jobs.data?.jobs ?? []).filter((j) => j.projectId === pid);
-  const notesJob = projectJobs.find((j) => j.type === "language-notes");
-  const active = projectJobs.filter((j) =>
-    ["queued", "running", "pausing", "paused", "interrupted"].includes(j.status),
-  );
 
   return (
-    <Stack>
-      <Breadcrumbs>
-        <Anchor component={Link} to="/projects">
-          Projects
-        </Anchor>
-        <Text>{project.name}</Text>
-      </Breadcrumbs>
-      <Group justify="space-between">
-        <Title order={2}>{project.name}</Title>
-        <Badge size="lg" variant="light">
-          English → {project.targetLangName} ({project.targetLang})
-        </Badge>
-      </Group>
-      {active.length > 0 && (
-        <Card withBorder>
-          <Stack>
-            {active.map((j) => (
-              <JobRow key={j.id} job={j} />
-            ))}
-          </Stack>
-        </Card>
+    <>
+      {section === "notes" ? (
+        <LanguageNotesPanel
+          project={data.project}
+          notes={data.languageNotes}
+          job={projectJobs.find((j) => j.type === "language-notes")}
+        />
+      ) : section === "usage" ? (
+        <UsagePanel project={data.project} />
+      ) : section === "options" ? (
+        <ProjectOptions detail={data} />
+      ) : (
+        <Overview
+          detail={data}
+          jobs={projectJobs}
+          onAddBook={() => setBookOpen(true)}
+          onAddPair={() => setPairOpen(true)}
+        />
       )}
-      <Tabs defaultValue="overview" keepMounted={false}>
-        <Tabs.List>
-          <Tabs.Tab value="overview">Books</Tabs.Tab>
-          <Tabs.Tab value="notes">Language notes</Tabs.Tab>
-          <Tabs.Tab value="usage">Usage</Tabs.Tab>
-          <Tabs.Tab value="options">Options</Tabs.Tab>
-        </Tabs.List>
-        <Tabs.Panel value="overview" pt="md">
-          <Stack gap="xl">
-            <Stack>
-              <Group justify="space-between">
-                <div>
-                  <Title order={4}>Reference pairs</Title>
-                  <Text size="sm" c="dimmed">
-                    English books with their human translations. Phase 1 learns names, terms and
-                    style from them.
-                  </Text>
-                </div>
-                <Button variant="light" onClick={() => setPairOpen(true)}>
-                  Add reference pair
-                </Button>
-              </Group>
-              {pairs.length === 0 ? (
-                <Text size="sm" c="dimmed">
-                  None yet. Reference pairs are optional, but they make translations consistent with
-                  earlier human work.
-                </Text>
-              ) : (
-                <Table>
-                  <Table.Tbody>
-                    {pairs.map((p) => (
-                      <Table.Tr key={p.id}>
-                        <Table.Td>
-                          <Anchor component={Link} to={`/projects/${pid}/pairs/${p.id}`} fw={500}>
-                            {p.title}
-                          </Anchor>
-                          <Text size="xs" c="dimmed">
-                            {p.sourceFileName} + {p.targetFileName}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>{phaseBadge(p.phase1.state, "Phase 1")}</Table.Td>
-                        <Table.Td>
-                          <Text size="sm">
-                            {p.phase1.entries !== null ? `${p.phase1.entries} KB entries` : ""}
-                          </Text>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              )}
-            </Stack>
-            <Stack>
-              <Group justify="space-between">
-                <div>
-                  <Title order={4}>Books to translate</Title>
-                  <Text size="sm" c="dimmed">
-                    Phase 2 reads the book and builds its knowledge base; phase 3 translates it.
-                  </Text>
-                </div>
-                <Button onClick={() => setBookOpen(true)}>Add book</Button>
-              </Group>
-              {books.length === 0 ? (
-                <Text size="sm" c="dimmed">
-                  None yet.
-                </Text>
-              ) : (
-                <Table>
-                  <Table.Tbody>
-                    {books.map((b) => (
-                      <Table.Tr key={b.id}>
-                        <Table.Td>
-                          <Anchor component={Link} to={`/projects/${pid}/books/${b.id}`} fw={500}>
-                            {b.title}
-                          </Anchor>
-                          <Text size="xs" c="dimmed">
-                            {b.sourceFileName}
-                          </Text>
-                        </Table.Td>
-                        <Table.Td>
-                          <Group gap="xs">
-                            {phaseBadge(b.phase2.state, "Phase 2")}
-                            {phaseBadge(b.phase3.state, "Phase 3")}
-                            {b.build.builtAt && (
-                              <Badge size="sm" color="green" variant="light">
-                                built
-                              </Badge>
-                            )}
-                          </Group>
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
-              )}
-            </Stack>
-          </Stack>
-        </Tabs.Panel>
-        <Tabs.Panel value="notes" pt="md">
-          <LanguageNotesPanel project={project} notes={data.languageNotes} job={notesJob} />
-        </Tabs.Panel>
-        <Tabs.Panel value="usage" pt="md">
-          <UsagePanel projectId={pid} />
-        </Tabs.Panel>
-        <Tabs.Panel value="options" pt="md">
-          <ProjectOptions detail={data} />
-        </Tabs.Panel>
-      </Tabs>
       <UploadPairModal pid={pid} opened={pairOpen} onClose={() => setPairOpen(false)} />
       <UploadBookModal pid={pid} opened={bookOpen} onClose={() => setBookOpen(false)} />
-    </Stack>
+    </>
   );
 }

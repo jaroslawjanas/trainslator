@@ -1,31 +1,32 @@
 import {
   Alert,
-  Badge,
+  Box,
   Button,
-  Card,
-  Grid,
   Group,
   Loader,
-  NavLink,
-  Paper,
-  ScrollArea,
   SegmentedControl,
   Stack,
+  Switch,
   Table,
   Tabs,
   Text,
   TextInput,
+  Title,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router";
 import { get, post, put } from "../../api/client.ts";
-import { JobRow, useJobs } from "../../components/JobsIndicator.tsx";
-import { costText } from "../pair/Phase1Panel.tsx";
+import { useJobs } from "../../components/JobsIndicator.tsx";
+import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { displayTitle, plural } from "../../lib/format.ts";
+import { ACTIVE_JOB } from "../../lib/stages.ts";
+import { useProject } from "../ProjectPage.tsx";
 import { useSettings } from "../SettingsPage.tsx";
 import type { BookDetail, ChapterView, UnitView } from "./types.ts";
-import { UnitRow } from "./UnitRow.tsx";
+import { UnitRow, unitMark } from "./UnitRow.tsx";
 
 interface Estimate {
   chunks: number;
@@ -36,9 +37,31 @@ interface Estimate {
   outputTokens: number;
 }
 
-function UnitList({ pid, bookId, chapter }: { pid: string; bookId: string; chapter: ChapterView }) {
+type Filter = "all" | "attention" | "warnings" | "edited";
+
+interface Totals {
+  units: number;
+  ok: number;
+  flagged: number;
+  refused: number;
+  pending: number;
+  edited: number;
+}
+
+function Spread({
+  pid,
+  bookId,
+  chapter,
+  targetName,
+}: {
+  pid: string;
+  bookId: string;
+  chapter: ChapterView;
+  targetName: string;
+}) {
   const client = useQueryClient();
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState<Filter>("all");
+  const [showTags, setShowTags] = useState(false);
   const key = ["target", bookId, "units", chapter.id];
   const { data, isLoading } = useQuery({
     queryKey: key,
@@ -47,45 +70,58 @@ function UnitList({ pid, bookId, chapter }: { pid: string; bookId: string; chapt
         `/api/projects/${pid}/books/${bookId}/chapters/${chapter.id}/units`,
       ),
   });
+  const all = data?.units ?? [];
+  const counts = useMemo(
+    () => ({
+      attention: all.filter((u) => unitMark(u) === "attention").length,
+      warnings: all.filter((u) => u.warnings.length > 0).length,
+      edited: all.filter((u) => u.status === "edited").length,
+    }),
+    [all],
+  );
   const units = useMemo(() => {
-    const list = data?.units ?? [];
-    if (filter === "problems")
-      return list.filter((u) => u.status === "flagged" || u.status === "refused");
-    if (filter === "warnings") return list.filter((u) => u.warnings.length > 0);
-    if (filter === "edited") return list.filter((u) => u.status === "edited");
-    return list;
-  }, [data, filter]);
-  const parentRef = useRef<HTMLDivElement>(null);
-  const virtualizer = useVirtualizer({
+    if (filter === "attention") return all.filter((u) => unitMark(u) === "attention");
+    if (filter === "warnings") return all.filter((u) => u.warnings.length > 0);
+    if (filter === "edited") return all.filter((u) => u.status === "edited");
+    return all;
+  }, [all, filter]);
+
+  const listRef = useRef<HTMLDivElement>(null);
+  const [offset, setOffset] = useState(0);
+  useLayoutEffect(() => {
+    if (listRef.current) setOffset(listRef.current.getBoundingClientRect().top + window.scrollY);
+  });
+  const virtualizer = useWindowVirtualizer({
     count: units.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 140,
-    overscan: 6,
+    // Measured heights belong to a passage, not to a position in the (filtered) list.
+    getItemKey: (i) => units[i]?.key ?? i,
+    estimateSize: () => 120,
+    overscan: 8,
+    scrollMargin: offset,
   });
   const refresh = () => {
     void client.invalidateQueries({ queryKey: key });
     void client.invalidateQueries({ queryKey: ["target", bookId, "chapters"] });
   };
-  const chunkIndexes = [...new Set((data?.units ?? []).map((u) => u.chunkIndex))];
+  const chunkIndexes = [...new Set(all.map((u) => u.chunkIndex))];
 
   return (
-    <Stack>
-      <Group justify="space-between">
-        <SegmentedControl
-          size="xs"
-          value={filter}
-          onChange={setFilter}
-          data={[
-            { value: "all", label: `All (${chapter.units})` },
-            {
-              value: "problems",
-              label: `Flagged / refused (${chapter.flagged + chapter.refused})`,
-            },
-            { value: "warnings", label: "With warnings" },
-            { value: "edited", label: `Edited (${chapter.edited})` },
-          ]}
-        />
-        <Group gap="xs">
+    <Box>
+      <Group justify="space-between" align="flex-end" mb="md" gap="sm">
+        <Box style={{ minWidth: 0 }}>
+          <Title order={3}>{displayTitle(chapter.title)}</Title>
+          <Text size="sm" c="dimmed" mt={2}>
+            {plural(chapter.units, "passage")}
+            {chapter.pending > 0 ? `, ${chapter.pending} not translated yet` : ""}
+          </Text>
+        </Box>
+        <Group gap="md">
+          <Switch
+            size="xs"
+            label="Show tags"
+            checked={showTags}
+            onChange={(e) => setShowTags(e.currentTarget.checked)}
+          />
           {chunkIndexes.length > 0 && (
             <Button
               size="xs"
@@ -93,7 +129,7 @@ function UnitList({ pid, bookId, chapter }: { pid: string; bookId: string; chapt
               onClick={async () => {
                 if (
                   !window.confirm(
-                    `Re-translate all ${chunkIndexes.length} part(s) of this chapter? Your manual edits are kept.`,
+                    `Translate the whole chapter again (${plural(chunkIndexes.length, "part")})? Your own edits are kept.`,
                   )
                 )
                   return;
@@ -102,7 +138,7 @@ function UnitList({ pid, bookId, chapter }: { pid: string; bookId: string; chapt
                     await post(`/api/projects/${pid}/books/${bookId}/chunks/${n}/retranslate`, {
                       instruction: null,
                     });
-                  notifications.show({ message: "Re-translation started." });
+                  notifications.show({ message: "Translating the chapter again." });
                 } catch (e) {
                   notifications.show({
                     color: "red",
@@ -112,48 +148,70 @@ function UnitList({ pid, bookId, chapter }: { pid: string; bookId: string; chapt
                 }
               }}
             >
-              Re-translate chapter
+              Translate chapter again
             </Button>
           )}
         </Group>
       </Group>
-      {isLoading && <Loader />}
-      <Grid>
-        <Grid.Col span={6}>
-          <Text size="xs" c="dimmed">
-            English
-          </Text>
-        </Grid.Col>
-        <Grid.Col span={6}>
-          <Text size="xs" c="dimmed">
-            Translation
-          </Text>
-        </Grid.Col>
-      </Grid>
-      <div ref={parentRef} style={{ height: "70vh", overflow: "auto" }}>
-        <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-          {virtualizer.getVirtualItems().map((item) => {
-            const unit = units[item.index]!;
-            return (
-              <div
-                key={unit.key}
-                data-index={item.index}
-                ref={virtualizer.measureElement}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${item.start}px)`,
-                }}
-              >
-                <UnitRow pid={pid} bookId={bookId} unit={unit} onChanged={refresh} />
-              </div>
-            );
-          })}
+      <SegmentedControl
+        mb="md"
+        value={filter}
+        onChange={(v) => setFilter(v as Filter)}
+        data={[
+          { value: "all", label: `All ${all.length}` },
+          { value: "attention", label: `Need attention ${counts.attention}` },
+          { value: "warnings", label: `Warnings ${counts.warnings}` },
+          { value: "edited", label: `Edited ${counts.edited}` },
+        ]}
+      />
+      {isLoading && <Loader size="sm" />}
+      {data && units.length === 0 && (
+        <Text size="md" c="dimmed" py="xl">
+          {filter === "all" ? "This chapter has no text." : "Nothing here in this chapter."}
+        </Text>
+      )}
+      {units.length > 0 && (
+        <div className="tr-spread">
+          <div className="tr-spread-head">
+            <div>English</div>
+            <div />
+            <div>{targetName}</div>
+            <div />
+          </div>
+          <div
+            key={filter}
+            ref={listRef}
+            style={{ height: virtualizer.getTotalSize(), position: "relative", marginTop: 20 }}
+          >
+            {virtualizer.getVirtualItems().map((item) => {
+              const unit = units[item.index]!;
+              return (
+                <div
+                  key={unit.key}
+                  data-index={item.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)`,
+                  }}
+                >
+                  <UnitRow
+                    pid={pid}
+                    bookId={bookId}
+                    unit={unit}
+                    showTags={showTags}
+                    onChanged={refresh}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
-    </Stack>
+      )}
+    </Box>
   );
 }
 
@@ -183,43 +241,46 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
       setItems(Object.fromEntries(data.items.map((i) => [i.key, i.translation ?? ""])));
     }
   }, [data]);
-  if (!data) return <Loader />;
+  if (!data) return <Loader size="sm" />;
   return (
-    <Stack>
+    <Stack maw={860}>
       <Text size="sm" c="dimmed">
-        The book's title and the labels of its table of contents. Labels that match a chapter
+        The book's title and the labels in its table of contents. Labels that match a chapter
         heading reuse the heading's translation.
       </Text>
       <TextInput
-        label={`Title (original: ${data.title})`}
+        label="Title"
+        description={`Original: ${data.title}`}
         value={title}
         onChange={(e) => setTitle(e.currentTarget.value)}
+        styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 16 } }}
       />
-      <Paper withBorder>
-        <ScrollArea h={420}>
-          <Table>
-            <Table.Tbody>
-              {data.items.map((i) => (
-                <Table.Tr key={i.key}>
-                  <Table.Td w="45%">
-                    <Text size="sm">{i.source}</Text>
-                    <Text size="xs" c="dimmed">
-                      {i.file.split("/").pop()} {i.origin ? `· ${i.origin}` : ""}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <TextInput
-                      size="xs"
-                      value={items[i.key] ?? ""}
-                      onChange={(e) => setItems({ ...items, [i.key]: e.currentTarget.value })}
-                    />
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea>
-      </Paper>
+      <Table>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th w="45%">English label</Table.Th>
+            <Table.Th>Translation</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {data.items.map((i) => (
+            <Table.Tr key={i.key}>
+              <Table.Td>
+                <div className="tr-term">{i.source}</div>
+              </Table.Td>
+              <Table.Td>
+                <TextInput
+                  size="xs"
+                  aria-label={`Translation of ${i.source}`}
+                  value={items[i.key] ?? ""}
+                  onChange={(e) => setItems({ ...items, [i.key]: e.currentTarget.value })}
+                  styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 14 } }}
+                />
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
       <Group justify="flex-end">
         <Button
           onClick={async () => {
@@ -234,7 +295,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
                 items: changed,
               });
               await client.invalidateQueries({ queryKey: key });
-              notifications.show({ color: "green", message: "Saved." });
+              notifications.show({ color: "green", message: "Title and contents saved." });
             } catch (e) {
               notifications.show({
                 color: "red",
@@ -244,7 +305,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
             }
           }}
         >
-          Save title and labels
+          Save title and contents
         </Button>
       </Group>
     </Stack>
@@ -265,50 +326,112 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
         }[];
       }>(`/api/projects/${pid}/books/${bookId}/glossary`),
   });
-  if (!data) return <Loader />;
-  if (data.terms.length === 0)
-    return (
-      <Text size="sm" c="dimmed">
-        No terms were coined during translation.
-      </Text>
-    );
+  if (!data) return <Loader size="sm" />;
   return (
-    <Stack>
+    <Stack maw={960}>
       <Text size="sm" c="dimmed">
-        Names and terms the AI had to invent while translating (not in the knowledge bases). Later
-        chunks reuse them. Add important ones to the book's knowledge base to fix them for good.
+        Names and terms the AI had to invent while translating, because no knowledge base had them.
+        Later chunks reuse them. Add the important ones to the book's knowledge base to settle them.
       </Text>
-      <Table striped>
-        <Table.Tbody>
-          {data.terms.map((t) => (
-            <Table.Tr key={`${t.kind}:${t.source}`}>
-              <Table.Td>{t.source}</Table.Td>
-              <Table.Td>{t.target}</Table.Td>
-              <Table.Td>
-                <Text size="xs" c="dimmed">
-                  {t.note}
-                </Text>
-                {t.conflict && (
-                  <Text size="xs" c="orange">
-                    {t.conflict}
-                  </Text>
-                )}
-              </Table.Td>
+      {data.terms.length === 0 ? (
+        <Text size="md" c="dimmed">
+          Nothing was coined: every name and term came from the knowledge bases.
+        </Text>
+      ) : (
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>English</Table.Th>
+              <Table.Th>Translation</Table.Th>
+              <Table.Th>Note</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {data.terms.map((t) => (
+              <Table.Tr key={`${t.kind}:${t.source}`}>
+                <Table.Td>
+                  <div className="tr-term">{t.source}</div>
+                  <Text size="xs" c="dimmed">
+                    {t.kind.replace("_", " ")}
+                  </Text>
+                </Table.Td>
+                <Table.Td>
+                  <div className="tr-term">{t.target}</div>
+                </Table.Td>
+                <Table.Td>
+                  <Text size="sm" c="dimmed">
+                    {t.note}
+                  </Text>
+                  {t.conflict && (
+                    <Text size="sm" c="yellow">
+                      {t.conflict}
+                    </Text>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
     </Stack>
+  );
+}
+
+function ChapterList({
+  chapters,
+  selected,
+  onSelect,
+}: {
+  chapters: ChapterView[];
+  selected: string | null;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <nav className="tr-chapters" aria-label="Chapters">
+      {chapters.map((c) => {
+        const attention = c.flagged + c.refused;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            className="tr-chapter"
+            data-active={c.id === selected || undefined}
+            aria-current={c.id === selected ? "true" : undefined}
+            onClick={() => onSelect(c.id)}
+          >
+            <div className="tr-chapter-title">{displayTitle(c.title)}</div>
+            <div className="tr-chapter-meta">
+              {attention > 0 ? (
+                <Text span size="xs" c="red">
+                  {attention} need attention
+                </Text>
+              ) : c.pending > 0 ? (
+                `${c.pending} of ${c.units} not translated`
+              ) : (
+                plural(c.units, "passage")
+              )}
+              {c.edited > 0 && (
+                <Text span size="xs" c="blue">
+                  , {c.edited} edited
+                </Text>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
 export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetail }) {
   const client = useQueryClient();
   const bookId = detail.book.id;
+  const [params, setParams] = useSearchParams();
+  const project = useProject(pid);
   const chapters = useQuery({
     queryKey: ["target", bookId, "chapters"],
     queryFn: () =>
-      get<{ chapters: ChapterView[]; totals: Record<string, number> | null }>(
+      get<{ chapters: ChapterView[]; totals: Totals | null }>(
         `/api/projects/${pid}/books/${bookId}/chapters`,
       ),
   });
@@ -318,17 +441,25 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
   });
   const settings = useSettings();
   const jobs = useJobs();
-  const [selected, setSelected] = useState<string | null>(null);
   const job = (jobs.data?.jobs ?? []).find(
     (j) => j.targetId === bookId && (j.type === "phase3" || j.type === "retranslate"),
   );
-  const running = job && ["queued", "running", "pausing"].includes(job.status);
+  const running = job !== undefined && ACTIVE_JOB.includes(job.status);
   const model = settings.data?.settings.models.find(
     (m) => m.id === settings.data?.settings.steps["phase3.translate"].modelId,
   );
   const list = chapters.data?.chapters ?? [];
-  const chapter = list.find((c) => c.id === selected) ?? null;
   const totals = chapters.data?.totals;
+  const view = params.get("view") ?? "review";
+  // Open where the work is: a chapter that needs attention, else the first real chapter.
+  const firstWithWork =
+    list.find((c) => c.flagged + c.refused > 0) ??
+    list.find((c) => c.units >= 20) ??
+    list.find((c) => c.units > 0) ??
+    null;
+  const selectedId = params.get("chapter") ?? firstWithWork?.id ?? null;
+  const chapter = list.find((c) => c.id === selectedId) ?? null;
+  const targetName = project.data?.project.targetLangName ?? "Translation";
 
   useEffect(() => {
     if (job && !running) {
@@ -336,111 +467,104 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
     }
   }, [job?.status, running, client, bookId, job]);
 
+  const setParam = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    setParams(next, { replace: key === "view" });
+  };
+
+  const state = detail.book.phase3.state;
+  const remaining = estimate.data?.remaining ?? 0;
+  const attention = totals ? totals.flagged + totals.refused : 0;
+  const summary = totals
+    ? `${plural(totals.ok + totals.edited, "passage")} translated${totals.edited > 0 ? `, ${totals.edited} edited by you` : ""}. ${attention > 0 ? `${attention} need attention.` : "None need attention."}${totals.pending > 0 ? ` ${totals.pending} not translated yet.` : ""}`
+    : undefined;
+
   return (
-    <Stack>
-      {estimate.data && (
-        <Card withBorder>
-          <Text size="sm">
-            {estimate.data.chunks} chunks ({estimate.data.remaining} left) · about{" "}
-            {estimate.data.inputTokens.toLocaleString()} input tokens (
-            {estimate.data.cachedTokens.toLocaleString()} cacheable) and{" "}
-            {estimate.data.outputTokens.toLocaleString()} output tokens left ·{" "}
-            {costText(
-              estimate.data.inputTokens - estimate.data.cachedTokens,
-              estimate.data.outputTokens,
-              model?.pricing,
-            )}
-          </Text>
-        </Card>
-      )}
-      {detail.book.phase2.state === "none" && (
-        <Alert color="blue">
-          Phase 2 hasn't been run for this book. You can translate anyway, but names and terms will
-          be less consistent.
-        </Alert>
-      )}
-      {job && <JobRow job={job} />}
-      <Group>
-        <Button
-          disabled={Boolean(running)}
-          onClick={async () => {
-            try {
-              await post(`/api/projects/${pid}/books/${bookId}/phase3/run`);
-              void client.invalidateQueries({ queryKey: ["jobs"] });
-            } catch (e) {
-              notifications.show({
-                color: "red",
-                title: "Couldn't start the translation",
-                message: (e as Error).message,
-              });
-            }
-          }}
-        >
-          {detail.book.phase3.state === "none" ? "Translate the book" : "Continue translating"}
-        </Button>
-        {totals && (
-          <Text size="sm">
-            {totals.ok} ok · {totals.edited} edited · {totals.flagged} flagged · {totals.refused}{" "}
-            refused · {totals.pending} not yet translated
+    <>
+      <RunPanel
+        state={state}
+        finishedAt={detail.book.phase3.finishedAt}
+        job={job}
+        summary={summary}
+        estimate={
+          estimate.data && remaining > 0
+            ? `${plural(remaining, "chunk")} to go. ${estimateText({
+                input: estimate.data.inputTokens,
+                cached: estimate.data.cachedTokens,
+                output: estimate.data.outputTokens,
+                pricing: model?.pricing,
+              })}`
+            : undefined
+        }
+        actionLabel={state === "none" ? "Translate the book" : "Translate the rest"}
+        hideAction={state !== "none" && remaining === 0}
+        onRun={async () => {
+          try {
+            await post(`/api/projects/${pid}/books/${bookId}/phase3/run`);
+            void client.invalidateQueries({ queryKey: ["jobs"] });
+          } catch (e) {
+            notifications.show({
+              color: "red",
+              title: "Couldn't start the translation",
+              message: (e as Error).message,
+            });
+          }
+        }}
+      >
+        {state === "none" && detail.book.phase2.state === "none" && (
+          <Text size="sm" c="yellow" mt="sm" pl={22}>
+            Phase 2 hasn't read this book yet. You can translate anyway, but names and terms will be
+            less consistent.
           </Text>
         )}
-      </Group>
-      <Tabs defaultValue="review" keepMounted={false}>
-        <Tabs.List>
+      </RunPanel>
+
+      <Tabs value={view} onChange={(v) => v && setParam("view", v)} keepMounted={false}>
+        <Tabs.List mb="lg">
           <Tabs.Tab value="review">Review</Tabs.Tab>
-          <Tabs.Tab value="toc">Title &amp; contents</Tabs.Tab>
+          <Tabs.Tab value="toc">Title and contents</Tabs.Tab>
           <Tabs.Tab value="glossary">Coined terms</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="review" pt="md">
-          {list.length === 0 ? (
-            <Text size="sm" c="dimmed">
-              Nothing translated yet.
-            </Text>
-          ) : (
-            <Grid>
-              <Grid.Col span={{ base: 12, md: 3 }}>
-                <ScrollArea h="75vh">
-                  {list.map((c) => (
-                    <NavLink
-                      key={c.id}
-                      active={c.id === selected}
-                      onClick={() => setSelected(c.id)}
-                      label={c.title}
-                      description={`${c.ok + c.edited}/${c.units} done`}
-                      rightSection={
-                        c.flagged + c.refused > 0 ? (
-                          <Badge size="xs" color="red" variant="light">
-                            {c.flagged + c.refused}
-                          </Badge>
-                        ) : c.pending > 0 ? (
-                          <Badge size="xs" color="gray" variant="light">
-                            {c.pending}
-                          </Badge>
-                        ) : null
-                      }
-                    />
-                  ))}
-                </ScrollArea>
-              </Grid.Col>
-              <Grid.Col span={{ base: 12, md: 9 }}>
-                {chapter ? (
-                  <UnitList key={chapter.id} pid={pid} bookId={bookId} chapter={chapter} />
-                ) : (
-                  <Text size="sm" c="dimmed">
-                    Choose a chapter to review it.
-                  </Text>
-                )}
-              </Grid.Col>
-            </Grid>
+        <Tabs.Panel value="review">
+          {chapters.isLoading && <Loader size="sm" />}
+          {chapters.data && list.length === 0 && (
+            <Alert color="gray" maw={620}>
+              Nothing is translated yet. Start the translation above; chapters appear here as
+              they're done.
+            </Alert>
+          )}
+          {list.length > 0 && (
+            <Box className="tr-review">
+              <ChapterList
+                chapters={list}
+                selected={chapter?.id ?? null}
+                onSelect={(id) => {
+                  setParam("chapter", id);
+                  window.scrollTo({ top: 0 });
+                }}
+              />
+              {chapter ? (
+                <Spread
+                  key={chapter.id}
+                  pid={pid}
+                  bookId={bookId}
+                  chapter={chapter}
+                  targetName={targetName}
+                />
+              ) : (
+                <Text c="dimmed">Choose a chapter.</Text>
+              )}
+            </Box>
           )}
         </Tabs.Panel>
-        <Tabs.Panel value="toc" pt="md">
+        <Tabs.Panel value="toc">
           <TocPanel pid={pid} bookId={bookId} />
         </Tabs.Panel>
-        <Tabs.Panel value="glossary" pt="md">
+        <Tabs.Panel value="glossary">
           <GlossaryPanel pid={pid} bookId={bookId} />
         </Tabs.Panel>
       </Tabs>
-    </Stack>
+    </>
   );
 }

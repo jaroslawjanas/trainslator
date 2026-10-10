@@ -1,8 +1,11 @@
-import { Alert, Button, Card, Group, Loader, Stack, Text } from "@mantine/core";
+import { Alert, Anchor, Loader, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link } from "react-router";
 import { get, post } from "../../api/client.ts";
-import { JobRow, useJobs } from "../../components/JobsIndicator.tsx";
+import { useJobs } from "../../components/JobsIndicator.tsx";
+import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { plural } from "../../lib/format.ts";
 import { useSettings } from "../SettingsPage.tsx";
 import type { PairDetail } from "./AlignmentPanel.tsx";
 
@@ -10,16 +13,6 @@ interface Estimate {
   units: number;
   inputTokens: number;
   outputTokens: number;
-}
-
-export function costText(
-  input: number,
-  output: number,
-  pricing: { inputPerM: number; outputPerM: number } | null | undefined,
-): string {
-  if (!pricing) return "price unknown (add prices to the model in Settings)";
-  const cost = (input * pricing.inputPerM + output * pricing.outputPerM) / 1_000_000;
-  return `about $${cost < 0.01 ? cost.toFixed(4) : cost.toFixed(2)} before caching`;
 }
 
 export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
@@ -34,11 +27,11 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
   });
   const settings = useSettings();
   const jobs = useJobs();
-  if (pair.isLoading) return <Loader />;
+  if (pair.isLoading) return <Loader size="sm" />;
   if (!pair.data) return <Alert color="red">Couldn't load the pair.</Alert>;
   const job = (jobs.data?.jobs ?? []).find((j) => j.targetId === pairId && j.type === "phase1");
-  const running = job && ["queued", "running", "pausing"].includes(job.status);
-  const state = pair.data.pair.phase1.state;
+  const { phase1 } = pair.data.pair;
+  const confirmed = pair.data.alignment.status === "confirmed";
   const readModel = settings.data?.settings.models.find(
     (m) => m.id === settings.data?.settings.steps["phase1.read"].modelId,
   );
@@ -57,34 +50,48 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
   };
 
   return (
-    <Stack maw={820}>
-      <Text size="sm" c="dimmed">
-        Phase 1 reads every included chapter pair (in parallel, with the "Phase 1 · read" model),
-        groups what it finds, and merges it into this pair's knowledge base (with the "Phase 1 ·
-        merge" model). Chapters already read are reused when you run it again, and your edits to the
-        knowledge base are kept.
-      </Text>
-      {estimate.data && (
-        <Card withBorder>
-          <Text size="sm">
-            {estimate.data.units} chapter pairs · about {estimate.data.inputTokens.toLocaleString()}{" "}
-            input and {estimate.data.outputTokens.toLocaleString()} output tokens ·{" "}
-            {costText(estimate.data.inputTokens, estimate.data.outputTokens, readModel?.pricing)}
-          </Text>
-        </Card>
+    <>
+      {!confirmed && (
+        <Alert color="yellow" mb="lg" maw={720}>
+          Confirm the{" "}
+          <Anchor component={Link} to={`/projects/${pid}/pairs/${pairId}/alignment`}>
+            chapter alignment
+          </Anchor>{" "}
+          first, so the AI compares the right chapters.
+        </Alert>
       )}
-      {job && <JobRow job={job} />}
-      <Group>
-        <Button onClick={run} disabled={Boolean(running)}>
-          {state === "none" ? "Run phase 1" : "Run phase 1 again"}
-        </Button>
-        {state !== "none" && pair.data.pair.phase1.entries !== null && (
-          <Text size="sm">
-            Last result: {pair.data.pair.phase1.entries} knowledge-base entries (
-            {state.replaceAll("_", " ")}).
-          </Text>
-        )}
-      </Group>
-    </Stack>
+      <RunPanel
+        state={phase1.state}
+        finishedAt={phase1.finishedAt}
+        job={job}
+        summary={
+          phase1.entries !== null ? (
+            <>
+              The knowledge base has {plural(phase1.entries, "entry", "entries")}.{" "}
+              <Anchor component={Link} to={`/projects/${pid}/pairs/${pairId}/kb`} size="sm">
+                Review it
+              </Anchor>
+            </>
+          ) : undefined
+        }
+        estimate={
+          estimate.data && phase1.state === "none"
+            ? `${plural(estimate.data.units, "chapter pair")} to read. ${estimateText({
+                input: estimate.data.inputTokens,
+                output: estimate.data.outputTokens,
+                pricing: readModel?.pricing,
+              })}`
+            : undefined
+        }
+        actionLabel={phase1.state === "none" ? "Learn from this pair" : "Learn again"}
+        disabled={!confirmed}
+        onRun={run}
+      />
+      <Text size="sm" c="dimmed" maw={720}>
+        Chapter pairs run in parallel with the model chosen for "Phase 1: read chapters"; the
+        findings are merged with the one for "Phase 1: merge findings". Chapters already read are
+        reused when you run it again, and your edits to the knowledge base are kept.
+      </Text>
+    </>
   );
 }

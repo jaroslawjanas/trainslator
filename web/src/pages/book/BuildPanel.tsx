@@ -1,9 +1,13 @@
-import { Alert, Anchor, Button, Checkbox, Code, Group, List, Stack, Text } from "@mantine/core";
+import { Alert, Box, Button, Checkbox, Code, Group, List, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { IconAlertCircle, IconCheck, IconDownload } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { get, post } from "../../api/client.ts";
-import { JobRow, useJobs } from "../../components/JobsIndicator.tsx";
+import { useJobs } from "../../components/JobsIndicator.tsx";
+import { Section } from "../../components/PageHeader.tsx";
+import { RunPanel } from "../../components/RunPanel.tsx";
+import { formatDate, plural } from "../../lib/format.ts";
 import type { BookDetail } from "./types.ts";
 
 interface Report {
@@ -20,6 +24,17 @@ interface Report {
   keptSource: number;
 }
 
+function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <Group gap={8} wrap="nowrap" align="flex-start">
+      <Box mt={3} c={ok ? "var(--tr-bookcloth)" : "var(--tr-ochre)"}>
+        {ok ? <IconCheck size={15} stroke={2.2} /> : <IconAlertCircle size={15} stroke={2} />}
+      </Box>
+      <Text size="md">{children}</Text>
+    </Group>
+  );
+}
+
 export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail }) {
   const client = useQueryClient();
   const bookId = detail.book.id;
@@ -32,93 +47,111 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
       get<{ report: Report | null }>(`/api/projects/${pid}/books/${bookId}/build/report`),
   });
   const r = report.data?.report ?? null;
-  const running = job && ["queued", "running", "pausing"].includes(job.status);
+  const built = Boolean(detail.book.build.builtAt);
 
   return (
-    <Stack maw={860}>
-      <Text size="sm" c="dimmed">
-        Builds the translated EPUB from the original files: translations replace the text,
-        everything else (styles, images, links, footnotes) stays as it was. You can build again at
-        any time after more review.
-      </Text>
-      <Checkbox
-        label="Use best attempts for flagged units"
-        description="Otherwise the build stops while units are flagged. Broken formatting is repaired or the English text is kept."
-        checked={useBest}
-        onChange={(e) => setUseBest(e.currentTarget.checked)}
-      />
-      {job && <JobRow job={job} />}
-      <Group>
-        <Button
-          disabled={Boolean(running)}
-          onClick={async () => {
-            try {
-              await post(`/api/projects/${pid}/books/${bookId}/build`, {
-                useBestAttempts: useBest,
-              });
-              void client.invalidateQueries({ queryKey: ["jobs"] });
-            } catch (e) {
-              notifications.show({
-                color: "red",
-                title: "Couldn't start the build",
-                message: (e as Error).message,
-              });
-            }
-          }}
-        >
-          Build EPUB
-        </Button>
-        {detail.book.build.fileName && (
-          <Anchor
-            href={`/api/projects/${pid}/books/${bookId}/output`}
-            download={detail.book.build.fileName}
-          >
-            Download {detail.book.build.fileName}
-          </Anchor>
-        )}
-      </Group>
+    <>
+      <RunPanel
+        state={built ? "done" : "none"}
+        finishedAt={detail.book.build.builtAt}
+        job={job}
+        summary={
+          built && detail.book.build.fileName
+            ? `Saved as ${detail.book.build.fileName}.`
+            : undefined
+        }
+        actionLabel={built ? "Build again" : "Build the EPUB"}
+        onRun={async () => {
+          try {
+            await post(`/api/projects/${pid}/books/${bookId}/build`, {
+              useBestAttempts: useBest,
+            });
+            void client.invalidateQueries({ queryKey: ["jobs"] });
+          } catch (e) {
+            notifications.show({
+              color: "red",
+              title: "Couldn't start the build",
+              message: (e as Error).message,
+            });
+          }
+        }}
+        extra={
+          detail.book.build.fileName && (
+            <Button
+              component="a"
+              href={`/api/projects/${pid}/books/${bookId}/output`}
+              download={detail.book.build.fileName}
+              leftSection={<IconDownload size={16} stroke={1.8} />}
+            >
+              Download
+            </Button>
+          )
+        }
+      >
+        <Box mt="md" pl={22}>
+          <Checkbox
+            label="Use the best attempts for passages that still need attention"
+            description="Otherwise the build stops while any passage needs attention. Broken formatting is repaired, or the English is kept."
+            checked={useBest}
+            onChange={(e) => setUseBest(e.currentTarget.checked)}
+          />
+        </Box>
+      </RunPanel>
+
       {r && (
-        <Stack gap="xs">
-          <Text size="sm">
-            Built {new Date(r.builtAt).toLocaleString()} · {r.changedFiles.length} files changed
-            {r.untranslatedUnits > 0 ? ` · ${r.untranslatedUnits} unit(s) left in English` : ""}
-            {r.flaggedUsed > 0 ? ` · ${r.flaggedUsed} flagged unit(s) used as best attempts` : ""}
-            {r.keptSource > 0 ? ` · ${r.keptSource} flagged unit(s) kept in English` : ""}
-          </Text>
-          {r.identifier && (
-            <Text size="sm" c="dimmed">
-              New book identifier: <Code>{r.identifier.new}</Code>
-            </Text>
-          )}
-          {r.newXmlProblems.length > 0 ? (
-            <Alert color="red" title="New XML problems">
-              <List size="sm">
-                {r.newXmlProblems.map((p) => (
-                  <List.Item key={p.file}>
-                    {p.file}: {p.problems.join("; ")}
-                  </List.Item>
-                ))}
-              </List>
-            </Alert>
-          ) : (
-            <Text size="sm" c="green">
-              All changed files are well-formed XML.
-            </Text>
-          )}
-          {r.missingGlyphs.length > 0 && (
-            <Alert color="yellow" title="Embedded fonts may lack some characters">
-              The translation uses {r.missingGlyphs.join(" ")}, which never appear in the original.
-              If a reader shows boxes instead, turn on "Remove embedded fonts" in the setup and
-              build again.
-            </Alert>
-          )}
-          {r.warnings.map((w) => (
-            <Text key={w} size="sm" c="orange">
-              {w}
-            </Text>
-          ))}
-        </Stack>
+        <Section title="Last build" description={`Built ${formatDate(r.builtAt)}.`}>
+          <Stack gap={8} maw={760}>
+            {r.newXmlProblems.length === 0 ? (
+              <Check ok>
+                All {plural(r.changedFiles.length, "changed file")} are well-formed XML.
+              </Check>
+            ) : (
+              <Alert color="red" title="New XML problems">
+                <List size="sm">
+                  {r.newXmlProblems.map((p) => (
+                    <List.Item key={p.file}>
+                      {p.file}: {p.problems.join("; ")}
+                    </List.Item>
+                  ))}
+                </List>
+              </Alert>
+            )}
+            <Check ok={r.untranslatedUnits === 0}>
+              {r.untranslatedUnits === 0
+                ? "Every passage is translated."
+                : `${plural(r.untranslatedUnits, "passage")} left in English.`}
+            </Check>
+            {r.flaggedUsed > 0 && (
+              <Check ok={false}>
+                {plural(r.flaggedUsed, "passage")} that needed attention used as best attempts.
+              </Check>
+            )}
+            {r.keptSource > 0 && (
+              <Check ok={false}>
+                {plural(r.keptSource, "passage")} that needed attention kept in English.
+              </Check>
+            )}
+            {r.identifier && (
+              <Check ok>
+                New book identifier <Code>{r.identifier.new}</Code>, so reading apps don't confuse
+                it with the original.
+              </Check>
+            )}
+            {r.missingGlyphs.length > 0 && (
+              <Alert color="yellow" title="The embedded fonts may lack some characters">
+                The translation uses {r.missingGlyphs.join(" ")}, which never appear in the
+                original. If a reader shows boxes instead, turn on "Remove embedded fonts" in the
+                setup and build again.
+              </Alert>
+            )}
+            {r.warnings.map((w) => (
+              <Text key={w} size="sm" c="yellow">
+                {w}
+              </Text>
+            ))}
+          </Stack>
+        </Section>
       )}
-    </Stack>
+    </>
   );
 }

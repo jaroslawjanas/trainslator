@@ -5,10 +5,10 @@ import type { Job, JobEvent } from "../../../src/shared/schemas/jobs.ts";
 
 const JOB_LABELS: Record<Job["type"], string> = {
   "language-notes": "Language notes",
-  phase1: "Phase 1",
-  phase2: "Phase 2",
-  phase3: "Translation",
-  retranslate: "Re-translation",
+  phase1: "Phase 1: learning",
+  phase2: "Phase 2: reading",
+  phase3: "Phase 3: translation",
+  retranslate: "Translating again",
   build: "Build",
 };
 

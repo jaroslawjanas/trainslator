@@ -1,9 +1,12 @@
-import { Accordion, Alert, Badge, Button, Card, Group, Loader, Stack, Text } from "@mantine/core";
+import { Accordion, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { get, post } from "../../api/client.ts";
-import { JobRow, useJobs } from "../../components/JobsIndicator.tsx";
-import { costText } from "../pair/Phase1Panel.tsx";
+import { useJobs } from "../../components/JobsIndicator.tsx";
+import { Section } from "../../components/PageHeader.tsx";
+import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { displayTitle, plural } from "../../lib/format.ts";
+import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { useSettings } from "../SettingsPage.tsx";
 import type { BookDetail, StepView } from "./types.ts";
 
@@ -13,6 +16,20 @@ interface Estimate {
   inputTokens: number;
   cachedTokens: number;
   outputTokens: number;
+}
+
+const OP_TEXT: Record<string, string> = {
+  add: "Added",
+  update: "Updated",
+  resolve: "Resolved",
+  remove: "Removed",
+};
+
+function countText(s: StepView): { text: string; rejected: number; suggestions: number } {
+  const applied = s.outcomes.filter((o) => o.result === "applied").length;
+  const rejected = s.outcomes.filter((o) => o.result === "rejected").length;
+  const suggestions = s.outcomes.filter((o) => o.result === "suggestion").length;
+  return { text: plural(applied, "change"), rejected, suggestions };
 }
 
 export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }) {
@@ -32,10 +49,11 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
   const settings = useSettings();
   const jobs = useJobs();
   const job = (jobs.data?.jobs ?? []).find((j) => j.targetId === bookId && j.type === "phase2");
-  const running = job && ["queued", "running", "pausing"].includes(job.status);
+  const running = job !== undefined && ACTIVE_JOB.includes(job.status);
   const model = settings.data?.settings.models.find(
     (m) => m.id === settings.data?.settings.steps["phase2.chapter"].modelId,
   );
+  const state = detail.book.phase2.state;
 
   const start = async (path: string) => {
     try {
@@ -50,126 +68,152 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
     }
   };
 
-  const counts = (s: StepView) => ({
-    applied: s.outcomes.filter((o) => o.result === "applied").length,
-    rejected: s.outcomes.filter((o) => o.result === "rejected").length,
-    suggestions: s.outcomes.filter((o) => o.result === "suggestion").length,
-  });
+  const list = steps.data?.steps ?? [];
+  const reviewChanges =
+    steps.data?.review?.outcomes.filter((o) => o.result === "applied").length ?? null;
 
   return (
-    <Stack>
-      <Text size="sm" c="dimmed">
-        Phase 2 reads the book chapter by chapter, before anything is translated. It writes a short
-        synopsis of each chapter and builds the book's knowledge base: names, terms and facts with
-        proposed translations. Things it can't decide yet become open questions; later chapters (or
-        you) answer them. You can answer questions in the knowledge base while it runs.
-      </Text>
-      {estimate.data && (
-        <Card withBorder>
-          <Text size="sm">
-            {estimate.data.steps} chapters · reference knowledge about{" "}
-            {estimate.data.referenceTokens.toLocaleString()} tokens per request · about{" "}
-            {estimate.data.inputTokens.toLocaleString()} input tokens (
-            {estimate.data.cachedTokens.toLocaleString()} of them cacheable) and{" "}
-            {estimate.data.outputTokens.toLocaleString()} output tokens ·{" "}
-            {costText(estimate.data.inputTokens, estimate.data.outputTokens, model?.pricing)}
+    <>
+      <RunPanel
+        state={state}
+        finishedAt={detail.book.phase2.finishedAt}
+        job={job}
+        summary={
+          list.length > 0
+            ? `Read ${plural(list.length, "chapter")}${reviewChanges !== null ? `; the final review made ${plural(reviewChanges, "change")}` : ""}. You can answer open questions in the knowledge base.`
+            : undefined
+        }
+        estimate={
+          estimate.data && state === "none"
+            ? `${plural(estimate.data.steps, "chapter")} to read, with about ${estimate.data.referenceTokens.toLocaleString()} tokens of reference knowledge in each request. ${estimateText(
+                {
+                  input: estimate.data.inputTokens,
+                  cached: estimate.data.cachedTokens,
+                  output: estimate.data.outputTokens,
+                  pricing: model?.pricing,
+                },
+              )}`
+            : undefined
+        }
+        actionLabel={state === "none" ? "Read the book" : "Read again"}
+        onRun={() => start(`/api/projects/${pid}/books/${bookId}/phase2/run`)}
+      />
+      <Section
+        title="Chapters"
+        description="What the AI noted in each chapter. Open a chapter to see the changes it made to the knowledge base."
+      >
+        {steps.isLoading && <Loader size="sm" />}
+        {steps.data && list.length === 0 && (
+          <Text size="md" c="dimmed">
+            No chapters read yet.
           </Text>
-        </Card>
-      )}
-      {job && <JobRow job={job} />}
-      <Group>
-        <Button
-          disabled={Boolean(running)}
-          onClick={() => start(`/api/projects/${pid}/books/${bookId}/phase2/run`)}
-        >
-          {detail.book.phase2.state === "none" ? "Run phase 2" : "Continue / run again"}
-        </Button>
-      </Group>
-      {steps.isLoading && <Loader />}
-      {steps.data && steps.data.steps.length === 0 && (
-        <Alert color="gray">No chapters read yet.</Alert>
-      )}
-      {steps.data && steps.data.steps.length > 0 && (
-        <Accordion variant="separated">
-          {steps.data.steps.map((s) => {
-            const c = counts(s);
-            return (
-              <Accordion.Item key={s.step} value={String(s.step)}>
-                <Accordion.Control>
-                  <Group justify="space-between" wrap="nowrap">
-                    <Text size="sm" fw={500} lineClamp={1}>
-                      {s.step + 1}. {s.title}
-                      {s.part ? ` (part ${s.part.index + 1}/${s.part.count})` : ""}
-                    </Text>
-                    <Group gap={4} wrap="nowrap">
-                      <Badge size="xs" variant="light" color="green">
-                        {c.applied} changes
-                      </Badge>
-                      {c.suggestions > 0 && (
-                        <Badge size="xs" variant="light" color="grape">
-                          {c.suggestions} suggestions
-                        </Badge>
-                      )}
-                      {c.rejected > 0 && (
-                        <Badge size="xs" variant="light" color="red">
-                          {c.rejected} rejected
-                        </Badge>
-                      )}
-                    </Group>
-                  </Group>
-                </Accordion.Control>
-                <Accordion.Panel>
-                  <Stack gap="xs">
-                    <Text size="sm">{s.synopsis || "(no synopsis)"}</Text>
-                    {s.outcomes.map((o) => (
-                      <Text
-                        key={`${o.op}:${o.entryId ?? o.id ?? o.source ?? ""}:${o.result}:${o.reason}`}
-                        size="xs"
-                        c={
-                          o.result === "rejected"
-                            ? "red"
-                            : o.result === "suggestion"
-                              ? "grape"
-                              : "dimmed"
-                        }
-                      >
-                        {o.op} {o.source ?? o.id ?? ""}: {o.message}
-                        {o.reason ? ` — ${o.reason}` : ""}
+        )}
+        {list.length > 0 && (
+          <Accordion
+            variant="default"
+            chevronPosition="left"
+            styles={{
+              item: { borderColor: "var(--tr-rule)" },
+              control: { paddingLeft: 4 },
+              content: { paddingLeft: 36 },
+            }}
+          >
+            {list.map((s) => {
+              const c = countText(s);
+              return (
+                <Accordion.Item key={s.step} value={String(s.step)}>
+                  <Accordion.Control>
+                    <Group justify="space-between" wrap="nowrap" gap="md">
+                      <Box style={{ minWidth: 0 }}>
+                        <Text className="serif" fw={600} size="lg" lineClamp={1}>
+                          {displayTitle(s.title)}
+                          {s.part ? (
+                            <Text span fw={400} c="dimmed" size="md">
+                              {" "}
+                              part {s.part.index + 1} of {s.part.count}
+                            </Text>
+                          ) : null}
+                        </Text>
+                        <Text size="sm" c="dimmed" lineClamp={2} className="serif" mt={2}>
+                          {s.synopsis || "No synopsis."}
+                        </Text>
+                      </Box>
+                      <Text size="sm" c="dimmed" style={{ whiteSpace: "nowrap" }}>
+                        {c.text}
+                        {c.rejected > 0 && (
+                          <Text span size="sm" c="red">
+                            , {c.rejected} rejected
+                          </Text>
+                        )}
                       </Text>
-                    ))}
-                    <Group>
-                      <Button
-                        size="xs"
-                        variant="light"
-                        disabled={Boolean(running)}
-                        onClick={() => {
-                          if (
-                            window.confirm(
-                              `Re-run phase 2 from "${s.title}"? Later chapters are read again; your own edits are kept.`,
-                            )
-                          ) {
-                            void start(
-                              `/api/projects/${pid}/books/${bookId}/phase2/rerun-from/${s.step}`,
-                            );
-                          }
-                        }}
-                      >
-                        Re-run from here
-                      </Button>
                     </Group>
-                  </Stack>
-                </Accordion.Panel>
-              </Accordion.Item>
-            );
-          })}
-        </Accordion>
-      )}
-      {steps.data?.review && (
-        <Text size="sm" c="dimmed">
-          Final review: {steps.data.review.outcomes.filter((o) => o.result === "applied").length}{" "}
-          changes.
-        </Text>
-      )}
-    </Stack>
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <Stack gap="sm" maw={820}>
+                      <Text className="tr-prose" size="md">
+                        {s.synopsis || "No synopsis."}
+                      </Text>
+                      {c.suggestions > 0 && (
+                        <Text size="sm" c="blue">
+                          {plural(c.suggestions, "suggestion")} for entries you locked; open the
+                          knowledge base to see them.
+                        </Text>
+                      )}
+                      <Stack gap={4}>
+                        {s.outcomes.map((o) => (
+                          <Text
+                            key={`${o.op}:${o.entryId ?? o.id ?? o.source ?? ""}:${o.result}:${o.reason}`}
+                            size="sm"
+                            c={
+                              o.result === "rejected"
+                                ? "red"
+                                : o.result === "suggestion"
+                                  ? "blue"
+                                  : undefined
+                            }
+                          >
+                            <Text span fw={500}>
+                              {OP_TEXT[o.op] ?? o.op}
+                            </Text>{" "}
+                            <span className="serif">{o.source ?? o.id ?? ""}</span>
+                            <Text span c="dimmed" size="sm">
+                              {o.result === "applied" && o.message !== "added"
+                                ? `, ${o.message}`
+                                : ""}
+                              {o.result !== "applied" ? `: ${o.message}` : ""}
+                              {o.reason ? `. ${o.reason}` : ""}
+                            </Text>
+                          </Text>
+                        ))}
+                      </Stack>
+                      <Group>
+                        <Button
+                          size="xs"
+                          variant="default"
+                          disabled={running}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Read the book again from "${displayTitle(s.title)}"? Later chapters are read again; your own edits are kept.`,
+                              )
+                            ) {
+                              void start(
+                                `/api/projects/${pid}/books/${bookId}/phase2/rerun-from/${s.step}`,
+                              );
+                            }
+                          }}
+                        >
+                          Read again from this chapter
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              );
+            })}
+          </Accordion>
+        )}
+      </Section>
+    </>
   );
 }

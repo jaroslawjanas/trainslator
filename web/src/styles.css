@@ -1,31 +1,694 @@
+/* ---------------------------------------------------------------------------
+   Tokens. Light: paper on a cool desk, blue-black ink. Dark: a desk at night.
+   --------------------------------------------------------------------------- */
+:root {
+  --tr-desk: #ebeef1;
+  --tr-desk-hover: #e1e5ea;
+  --tr-paper: #ffffff;
+  --tr-ink: #1b2433;
+  --tr-graphite: #5e6878;
+  --tr-faint: #8d96a3;
+  --tr-rule: #dde1e7;
+  --tr-rule-strong: #c9cfd7;
+  --tr-bookcloth: #1e5547;
+  --tr-bookcloth-soft: #e8f3ef;
+  --tr-red: #c2352a;
+  --tr-red-soft: #fcedeb;
+  --tr-blue: #2d64c8;
+  --tr-blue-soft: #ebf1fc;
+  --tr-ochre: #a86a0d;
+  --tr-ochre-soft: #fbf3e4;
+  --tr-fold: rgba(27, 36, 51, 0.07);
+  --tr-serif: "Literata Variable", Literata, Georgia, "Times New Roman", serif;
+  --tr-book-size: 1.0625rem;
+  --tr-book-leading: 1.62;
+}
+
+[data-mantine-color-scheme="dark"] {
+  --tr-desk: #12161c;
+  --tr-desk-hover: #1a2028;
+  --tr-paper: #181d24;
+  --tr-ink: #e4e8ee;
+  --tr-graphite: #98a2b3;
+  --tr-faint: #6b7586;
+  --tr-rule: #2a313b;
+  --tr-rule-strong: #3a424f;
+  --tr-bookcloth: #5db39a;
+  --tr-bookcloth-soft: rgba(93, 179, 154, 0.12);
+  --tr-red: #f07167;
+  --tr-red-soft: rgba(240, 113, 103, 0.12);
+  --tr-blue: #7fa8f5;
+  --tr-blue-soft: rgba(127, 168, 245, 0.12);
+  --tr-ochre: #e0a84a;
+  --tr-ochre-soft: rgba(224, 168, 74, 0.12);
+  --tr-fold: rgba(0, 0, 0, 0.35);
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+html,
 body {
   min-height: 100vh;
 }
 
+body {
+  background: var(--tr-paper);
+  color: var(--tr-ink);
+  font-feature-settings: "kern";
+  -webkit-font-smoothing: antialiased;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.serif {
+  font-family: var(--tr-serif);
+}
+
 .mono {
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-family: var(--mantine-font-family-monospace);
   font-size: 0.85em;
 }
 
-.placeholder-chip {
-  display: inline-block;
-  padding: 0 4px;
-  margin: 0 1px;
+.muted {
+  color: var(--tr-graphite);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: must win over every component's own timing */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: must win over every component's own timing */
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Sidebar: the desk. The current place is marked with a bookcloth ribbon.
+   --------------------------------------------------------------------------- */
+.tr-nav {
+  background: var(--tr-desk);
+  --app-shell-border-color: var(--tr-rule);
+}
+
+.tr-wordmark {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--tr-ink);
+  text-decoration: none;
+  font-family: var(--tr-serif);
+  font-weight: 600;
+  font-size: 1.1875rem;
+  letter-spacing: -0.005em;
+}
+
+.tr-nav-label {
+  padding: 18px 12px 6px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--tr-graphite);
+}
+
+.tr-nav-link {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 12px;
   border-radius: 4px;
-  font-size: 0.75em;
-  line-height: 1.4;
-  vertical-align: baseline;
-  background: var(--mantine-color-gray-2);
-  color: var(--mantine-color-gray-7);
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  color: var(--tr-ink);
+  text-decoration: none;
+  font-size: var(--mantine-font-size-md);
+  line-height: 1.3;
 }
 
-[data-mantine-color-scheme="dark"] .placeholder-chip {
-  background: var(--mantine-color-dark-4);
-  color: var(--mantine-color-gray-4);
+.tr-nav-link:hover {
+  background: var(--tr-desk-hover);
 }
 
-.unit-text {
+.tr-nav-link[aria-current="page"] {
+  background: var(--tr-paper);
+  font-weight: 500;
+  box-shadow: 0 0 0 1px var(--tr-rule);
+}
+
+/* The ribbon: a bookmark strip hanging from the top edge, with a notched tail. */
+.tr-nav-link[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -1px;
+  width: 4px;
+  height: calc(100% + 7px);
+  background: var(--tr-bookcloth);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 4px), 0 100%);
+  z-index: 1;
+}
+
+.tr-nav-link .tr-nav-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tr-nav-link[data-depth="1"] {
+  padding-left: 22px;
+}
+
+.tr-nav-link[data-depth="2"] {
+  padding-left: 30px;
+  font-size: var(--mantine-font-size-sm);
+  min-height: 28px;
+}
+
+.tr-nav-book {
+  font-family: var(--tr-serif);
+}
+
+.tr-nav-project {
+  padding: 4px 12px 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Stage marks: small circles that say done, running, needs attention.
+   --------------------------------------------------------------------------- */
+.tr-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--tr-faint);
+  color: var(--tr-paper);
+}
+
+.tr-mark[data-state="neutral"] {
+  border: 0;
+  background: radial-gradient(circle, var(--tr-faint) 0 2px, transparent 2.5px);
+}
+
+.tr-mark[data-state="done"] {
+  background: var(--tr-bookcloth);
+  border-color: var(--tr-bookcloth);
+}
+
+.tr-mark[data-state="attention"] {
+  background: var(--tr-red);
+  border-color: var(--tr-red);
+}
+
+.tr-mark[data-state="warning"] {
+  background: var(--tr-ochre);
+  border-color: var(--tr-ochre);
+}
+
+.tr-mark[data-state="running"] {
+  border-color: var(--tr-bookcloth);
+  border-right-color: transparent;
+  animation: tr-spin 0.9s linear infinite;
+}
+
+@keyframes tr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Page header
+   --------------------------------------------------------------------------- */
+.tr-page-header {
+  padding: 28px 0 18px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--tr-rule);
+}
+
+.tr-context {
+  color: var(--tr-graphite);
+  font-size: var(--mantine-font-size-sm);
+  text-decoration: none;
+}
+
+a.tr-context:hover {
+  color: var(--tr-ink);
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------------------------------------
+   The open book: English on the verso, the translation on the recto,
+   with a fold between them and editorial marks in the outer margin.
+   --------------------------------------------------------------------------- */
+.tr-spread {
+  position: relative;
+  background: var(--tr-paper);
+}
+
+.tr-spread-head,
+.tr-spread-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px minmax(0, 1fr) 44px;
+}
+
+.tr-spread-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--tr-paper);
+  border-bottom: 1px solid var(--tr-rule);
+  padding: 10px 0 8px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--tr-graphite);
+}
+
+/* The fold runs the full height of the spread, behind the text. */
+.tr-spread::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc((100% - 100px) / 2);
+  width: 56px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--tr-fold) 46%,
+    var(--tr-fold) 54%,
+    transparent 100%
+  );
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.tr-spread-row {
+  position: relative;
+  padding: 0 0 1.05em;
+}
+
+.tr-spread-row[data-role="heading"],
+.tr-spread-row[data-role="title"] {
+  padding-top: 1.4em;
+  padding-bottom: 1.2em;
+}
+
+.tr-page-text {
+  font-family: var(--tr-serif);
+  font-size: var(--tr-book-size);
+  line-height: var(--tr-book-leading);
+  color: var(--tr-ink);
+  white-space: pre-line;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  font-variation-settings: "opsz" 14;
+}
+
+.tr-spread-row[data-role="heading"] .tr-page-text,
+.tr-spread-row[data-role="title"] .tr-page-text {
+  font-size: 1.3125rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variation-settings: "opsz" 24;
+}
+
+.tr-spread-row[data-role="list-item"] .tr-page-text {
+  padding-left: 1.2em;
+  text-indent: -0.9em;
+}
+
+.tr-spread-row[data-role="list-item"] .tr-page-text::before {
+  content: "• ";
+  color: var(--tr-faint);
+}
+
+.tr-spread-row[data-role="caption"] .tr-page-text,
+.tr-spread-row[data-role="alt"] .tr-page-text,
+.tr-spread-row[data-role="table-cell"] .tr-page-text {
+  font-size: 0.9375rem;
+  color: var(--tr-graphite);
+}
+
+.tr-spread-row[data-role="preformatted"] .tr-page-text {
   white-space: pre-wrap;
-  line-height: 1.55;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.875rem;
+}
+
+.tr-recto {
+  position: relative;
+}
+
+/* Change bars in the outer margin, the way editors mark a corrected line. */
+.tr-margin {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.tr-margin::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 4px;
+  bottom: calc(1.05em + 2px);
+  width: 3px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.tr-spread-row[data-mark="attention"] .tr-margin::before {
+  background: var(--tr-red);
+}
+
+.tr-spread-row[data-mark="warning"] .tr-margin::before {
+  background: var(--tr-ochre);
+}
+
+.tr-spread-row[data-mark="edited"] .tr-margin::before {
+  background: var(--tr-blue);
+}
+
+.tr-row-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tr-spread-row:hover .tr-row-actions,
+.tr-spread-row:focus-within .tr-row-actions,
+.tr-row-actions[data-open] {
+  opacity: 1;
+}
+
+.tr-note {
+  margin-top: 6px;
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.4;
+}
+
+.tr-note[data-kind="attention"] {
+  color: var(--tr-red);
+}
+
+.tr-note[data-kind="warning"] {
+  color: var(--tr-ochre);
+}
+
+.tr-note[data-kind="edited"] {
+  color: var(--tr-blue);
+}
+
+.tr-pending {
+  font-family: var(--tr-serif);
+  font-style: italic;
+  color: var(--tr-faint);
+}
+
+/* Inline formatting rebuilt from placeholders. */
+.tr-fmt-link {
+  text-decoration: underline;
+  text-decoration-color: var(--tr-rule-strong);
+  text-underline-offset: 3px;
+}
+
+.tr-fmt-token {
+  font-family: var(--mantine-font-family);
+  font-size: 0.72em;
+  color: var(--tr-graphite);
+  background: var(--tr-desk);
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  vertical-align: 0.12em;
+  white-space: nowrap;
+}
+
+.tr-fmt-noteref {
+  font-family: var(--mantine-font-family);
+  font-size: 0.68em;
+  vertical-align: super;
+  line-height: 0;
+  color: var(--tr-bookcloth);
+  padding: 0 1px;
+}
+
+/* "Show tags": the raw placeholders, for checking formatting. */
+.tr-tag {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.68em;
+  color: var(--tr-blue);
+  background: var(--tr-blue-soft);
+  border-radius: 3px;
+  padding: 0 3px;
+  margin: 0 1px;
+  vertical-align: 0.1em;
+  white-space: nowrap;
+}
+
+@media (max-width: 62em) {
+  .tr-spread::before {
+    display: none;
+  }
+  .tr-spread-head {
+    display: none;
+  }
+  .tr-spread-row {
+    grid-template-columns: minmax(0, 1fr) 40px;
+    grid-template-areas: "verso margin" "recto margin";
+    row-gap: 8px;
+    padding-bottom: 1.4em;
+    border-bottom: 1px solid var(--tr-rule);
+    margin-bottom: 1em;
+  }
+  .tr-verso {
+    grid-area: verso;
+  }
+  .tr-recto {
+    grid-area: recto;
+  }
+  .tr-margin {
+    grid-area: margin;
+  }
+  .tr-gutter {
+    display: none;
+  }
+  .tr-verso .tr-page-text {
+    color: var(--tr-graphite);
+  }
+  .tr-row-actions {
+    opacity: 1;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Chapter list beside the spread
+   --------------------------------------------------------------------------- */
+.tr-chapters {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.tr-chapter {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  padding: 7px 10px 7px 12px;
+  border-radius: 4px;
+  color: var(--tr-ink);
+  position: relative;
+  font: inherit;
+}
+
+.tr-chapter:hover {
+  background: var(--tr-desk);
+}
+
+.tr-chapter[data-active] {
+  background: var(--tr-desk);
+}
+
+.tr-chapter[data-active]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: calc(100% + 5px);
+  background: var(--tr-bookcloth);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% calc(100% - 3px), 0 100%);
+}
+
+.tr-chapter-title {
+  font-family: var(--tr-serif);
+  font-size: 0.9375rem;
+  line-height: 1.3;
+}
+
+.tr-chapter-meta {
+  margin-top: 2px;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--tr-graphite);
+}
+
+/* ---------------------------------------------------------------------------
+   Lists of books and pairs, KB rows, prose
+   --------------------------------------------------------------------------- */
+.tr-row-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid var(--tr-rule);
+  padding: 16px 4px;
+}
+
+.tr-row-link:first-child {
+  border-top: 1px solid var(--tr-rule);
+}
+
+.tr-list-flush > .tr-row-link:first-child {
+  border-top: 0;
+  padding-top: 4px;
+}
+
+.tr-row-title {
+  font-family: var(--tr-serif);
+  font-weight: 600;
+  font-size: 1.1875rem;
+  line-height: 1.3;
+}
+
+.tr-row-link:hover .tr-row-title {
+  text-decoration: underline;
+  text-decoration-color: var(--tr-rule-strong);
+  text-underline-offset: 4px;
+}
+
+.tr-steps {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tr-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--mantine-font-size-sm);
+  color: var(--tr-graphite);
+  padding-right: 10px;
+}
+
+.tr-step[data-state="done"] {
+  color: var(--tr-ink);
+}
+
+.tr-term {
+  font-family: var(--tr-serif);
+  font-size: 0.96875rem;
+  line-height: 1.35;
+}
+
+.tr-prose {
+  font-family: var(--tr-serif);
+  font-size: 1rem;
+  line-height: 1.65;
+  max-width: 44rem;
+}
+
+.tr-prose h1,
+.tr-prose h2,
+.tr-prose h3,
+.tr-prose h4 {
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 1.4em 0 0.4em;
+}
+
+.tr-prose h1 {
+  font-size: 1.5rem;
+}
+.tr-prose h2 {
+  font-size: 1.3125rem;
+}
+.tr-prose h3 {
+  font-size: 1.125rem;
+}
+.tr-prose h4 {
+  font-size: 1rem;
+}
+
+.tr-prose > :first-child {
+  margin-top: 0;
+}
+
+.tr-prose p {
+  margin: 0 0 0.8em;
+}
+
+.tr-prose ul,
+.tr-prose ol {
+  margin: 0 0 0.8em;
+  padding-left: 1.3em;
+}
+
+.tr-prose li {
+  margin-bottom: 0.25em;
+}
+
+.tr-prose code {
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.85em;
+  background: var(--tr-desk);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+.tr-stat-value {
+  font-family: var(--tr-serif);
+  font-size: 1.75rem;
+  font-weight: 500;
+  line-height: 1.1;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.tr-stat-label {
+  font-size: var(--mantine-font-size-sm);
+  color: var(--tr-graphite);
+  margin-top: 4px;
+}
+
+.tr-review {
+  display: grid;
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr);
+  gap: 32px;
+  align-items: start;
+}
+
+@media (max-width: 62em) {
+  .tr-review {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .tr-chapters {
+    position: static;
+    max-height: 240px;
+    border-bottom: 1px solid var(--tr-rule);
+    padding-bottom: 8px;
+  }
 }

@@ -26,27 +26,27 @@ export const STEP_INFO: Record<Step, StepInfo> = {
     suggestedTier: "medium",
   },
   "phase1.read": {
-    label: "Phase 1 · read chapters",
+    label: "Phase 1: read chapters",
     description: "Reads each chapter pair of a reference book and lists the translator's choices.",
     suggestedTier: "fast",
   },
   "phase1.merge": {
-    label: "Phase 1 · merge findings",
+    label: "Phase 1: merge findings",
     description: "Turns the findings from all chapters into the pair's knowledge base.",
     suggestedTier: "medium",
   },
   "phase2.chapter": {
-    label: "Phase 2 · chapters",
+    label: "Phase 2: read chapters",
     description: "Reads the new book chapter by chapter and updates its knowledge base.",
     suggestedTier: "medium",
   },
   "phase2.review": {
-    label: "Phase 2 · final review",
+    label: "Phase 2: final review",
     description: "Cleans up the book's knowledge base after all chapters are read.",
     suggestedTier: "medium",
   },
   "phase3.translate": {
-    label: "Phase 3 · translate",
+    label: "Phase 3: translate",
     description: "Translates the book chunk by chunk using the knowledge bases.",
     suggestedTier: "strong",
   },

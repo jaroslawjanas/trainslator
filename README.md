@@ -47,14 +47,15 @@ pnpm dev
 
 Open http://localhost:5173. Then:
 
-1. **Settings → Connections & models:** add a connection (choose the provider kind, which
+1. **Settings → Connections and models:** add a connection (choose the provider kind, which
    fills in sensible defaults), add one or more models, and press **Test**. The test sends a
    few small requests and suggests settings that work with that provider.
-2. **Settings → Step defaults:** choose a model for each step. A fast model is fine for
+2. **Settings → Models for each step:** choose a model for each step. A fast model is fine for
    phase 1, a medium one for phase 2, and the strongest you can afford for phase 3.
 3. **Projects:** create a project with the target language. Generate the language notes and
    adjust them if you like; they go into every request.
-4. Add reference pairs, then the book, and follow the tabs.
+4. Add reference pairs, then the book. The sidebar lists each book's stages (setup, reading,
+   knowledge base, translation, build) and marks the ones that are done.
 
 `pnpm dev` runs the API server (port 5174) and the UI dev server (port 5173) together. For
 everyday use, build the UI once and run a single server:
@@ -110,9 +111,9 @@ Don't expose the port to a network: there are no user accounts.
 ## Costs
 
 Each phase shows an estimate of tokens (and cost, when you enter the model's prices) before it
-runs, and the **Usage** tab shows what was actually used per step. Requests are arranged so
-that the long, unchanging parts (instructions and knowledge bases) come first, which lets
-providers with prompt caching charge less for them.
+runs, and each project's **Usage** page shows what was actually used per step. Requests are
+arranged so that the long, unchanging parts (instructions and knowledge bases) come first,
+which lets providers with prompt caching charge less for them.
 
 For a sense of scale: a 37,000-word book with one reference pair (a 19,000-word book and its
 translation) took about 55 requests over all three phases with a fast model: about 1 million
