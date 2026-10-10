@@ -203,6 +203,21 @@ describe("server", () => {
       `/api/projects/${project.id}/language-notes`,
     );
     expect(notes.markdown).toContain("gendered verb forms");
+    expect(fake.requests.at(-1)!.model).toBe("fake-model");
+
+    // Drafted with a model picked on the page instead of the utility step's.
+    await srv.json(
+      "PUT",
+      "/api/settings/models/strong",
+      makeModel("openai", { id: "strong", modelName: "strong-model", label: "Strong" }),
+    );
+    const { job: again } = await srv.json<{ job: { id: string } }>(
+      "POST",
+      `/api/projects/${project.id}/language-notes/generate`,
+      { modelId: "strong" },
+    );
+    expect((await srv.ctx.runner.wait(again.id))?.status).toBe("done");
+    expect(fake.requests.at(-1)!.model).toBe("strong-model");
   });
 
   it("explains what to set up when no model is chosen", async () => {

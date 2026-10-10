@@ -53,33 +53,76 @@ function onJob(client: QueryClient, job: Job, previous: Job | undefined): void {
   }
 }
 
-/** Subscribes to server events and keeps queries fresh. */
+/**
+ * The server sends a keepalive every 10 s. Silence for this long means the
+ * stream is dead even if the browser thinks it's open: after a server
+ * restart, the dev proxy can keep the old connection open without passing
+ * anything on.
+ */
+const SILENCE_MS = 25_000;
+
+/** Subscribes to server events and keeps queries fresh, reconnecting when the stream dies. */
 export function useLiveEvents(): void {
   const client = useQueryClient();
   useEffect(() => {
-    const source = new EventSource("/api/events");
-    // A reconnect means the server may have restarted: jobs that were running
-    // are now interrupted, and anything shown may be out of date.
-    let opened = false;
-    source.addEventListener("open", () => {
-      if (opened) void client.invalidateQueries();
-      opened = true;
-    });
     const known = new Map<string, Job>();
     const seed = client.getQueryData<{ jobs: Job[] }>(["jobs"]);
     for (const j of seed?.jobs ?? []) known.set(j.id, j);
-    source.addEventListener("job", (e) => {
-      const event = JSON.parse((e as MessageEvent).data) as JobEvent;
-      if (event.type !== "job") return;
-      onJob(client, event.job, known.get(event.job.id));
-      known.set(event.job.id, event.job);
-    });
-    source.addEventListener("changed", (e) => {
-      const event = JSON.parse((e as MessageEvent).data) as JobEvent;
-      if (event.type !== "changed") return;
-      void client.invalidateQueries({ queryKey: ["project", event.projectId] });
-      if (event.targetId) void client.invalidateQueries({ queryKey: ["target", event.targetId] });
-    });
-    return () => source.close();
+    let source: EventSource | null = null;
+    let lastSeen = Date.now();
+    let opened = false;
+    let stopped = false;
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    const connect = () => {
+      source?.close();
+      const s = new EventSource("/api/events");
+      source = s;
+      lastSeen = Date.now();
+      const alive = () => {
+        lastSeen = Date.now();
+      };
+      // A reconnect means the server may have restarted: jobs that were running
+      // are now interrupted, and anything shown may be out of date.
+      s.addEventListener("open", () => {
+        alive();
+        if (opened) void client.invalidateQueries();
+        opened = true;
+      });
+      s.addEventListener("hello", alive);
+      s.addEventListener("ping", alive);
+      s.addEventListener("job", (e) => {
+        alive();
+        const event = JSON.parse((e as MessageEvent).data) as JobEvent;
+        if (event.type !== "job") return;
+        onJob(client, event.job, known.get(event.job.id));
+        known.set(event.job.id, event.job);
+      });
+      s.addEventListener("changed", (e) => {
+        alive();
+        const event = JSON.parse((e as MessageEvent).data) as JobEvent;
+        if (event.type !== "changed") return;
+        void client.invalidateQueries({ queryKey: ["project", event.projectId] });
+        if (event.targetId) void client.invalidateQueries({ queryKey: ["target", event.targetId] });
+      });
+      // An error status (the proxy's, while the server is down) closes the
+      // stream for good; the browser only retries network errors itself.
+      s.addEventListener("error", () => {
+        if (s.readyState !== EventSource.CLOSED || stopped) return;
+        clearTimeout(retry);
+        retry = setTimeout(connect, 2000);
+      });
+    };
+
+    connect();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastSeen > SILENCE_MS) connect();
+    }, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(watchdog);
+      clearTimeout(retry);
+      source?.close();
+    };
   }, [client]);
 }

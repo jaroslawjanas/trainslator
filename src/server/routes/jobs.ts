@@ -98,7 +98,8 @@ export function eventRoutes(app: AppContext): Hono {
         }
         await new Promise<void>((resolve) => {
           wake = resolve;
-          setTimeout(resolve, 15_000);
+          // A keepalive at least this often: the page reconnects when they stop.
+          setTimeout(resolve, 10_000);
         });
         wake = null;
         if (queue.length === 0 && !stream.aborted)

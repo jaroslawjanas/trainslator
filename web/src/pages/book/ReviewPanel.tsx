@@ -18,19 +18,118 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconCopy,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
   IconPencil,
   IconPlus,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { del, get, put } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
 import { UnitText } from "../../components/PlaceholderText.tsx";
 import { displayTitle, formatDate, plural } from "../../lib/format.ts";
 import { RewriteModal } from "./RewriteModal.tsx";
-import type { ChapterView, HistoryView, ReviewUnit } from "./types.ts";
+import type { HistoryView, ReviewUnit } from "./types.ts";
+
+/** A chapter in the list, with how many passages differ between the versions shown. */
+interface ReviewChapter {
+  id: string;
+  title: string;
+  units: number;
+  /** Null with fewer than two versions shown. */
+  different: number | null;
+}
+
+const CHAPTERS_KEY = "tr-review-chapters";
+const DIFFERENCES_KEY = "tr-review-differences";
+
+/** The chapter list beside the columns; collapses to a narrow strip. */
+function ChapterList({
+  list,
+  selected,
+  collapsed,
+  showDifferences,
+  onToggle,
+  onSelect,
+}: {
+  list: ReviewChapter[];
+  selected: string | null;
+  collapsed: boolean;
+  /** Count the passages that differ between the versions. */
+  showDifferences: boolean;
+  onToggle: () => void;
+  onSelect: (id: string) => void;
+}) {
+  // Keep the open chapter in view when it changes (arrows, links).
+  useEffect(() => {
+    if (!collapsed && selected)
+      document.querySelector(".tr-review .tr-chapter[data-active]")?.scrollIntoView({
+        block: "nearest",
+      });
+  }, [selected, collapsed]);
+  if (collapsed)
+    return (
+      <div className="tr-chapters">
+        <Tooltip label="Show the chapters" position="right">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            aria-label="Show the chapters"
+            onClick={onToggle}
+          >
+            <IconLayoutSidebarLeftExpand size={18} stroke={1.6} />
+          </ActionIcon>
+        </Tooltip>
+      </div>
+    );
+  return (
+    <nav className="tr-chapters" aria-label="Chapters">
+      <Group justify="space-between" wrap="nowrap" pl={12} mb={6}>
+        <Text size="sm" fw={600}>
+          Chapters
+        </Text>
+        <Tooltip label="Hide the chapters" position="right">
+          <ActionIcon
+            variant="subtle"
+            color="gray"
+            size="sm"
+            aria-label="Hide the chapters"
+            onClick={onToggle}
+          >
+            <IconLayoutSidebarLeftCollapse size={16} stroke={1.6} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      {list.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          className="tr-chapter"
+          data-active={c.id === selected || undefined}
+          aria-current={c.id === selected ? "true" : undefined}
+          onClick={() => onSelect(c.id)}
+        >
+          <div className="tr-chapter-title">{displayTitle(c.title)}</div>
+          <div className="tr-chapter-meta">
+            {plural(c.units, "passage")}
+            {showDifferences &&
+              c.different !== null &&
+              (c.different > 0 ? (
+                <Text span size="xs" c="var(--tr-ochre)">
+                  , {c.different} different
+                </Text>
+              ) : (
+                ", the same"
+              ))}
+          </div>
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 const SOURCE = "source";
 const CURRENT = "current";
@@ -39,6 +138,61 @@ const MAX_COLUMNS = 3;
 interface Column {
   id: string;
   label: string;
+}
+
+/** Narrowest a column may get, as a share of the page's width. */
+const MIN_SHARE = 0.12;
+/** The space between columns, in pixels (as in the stylesheet). */
+const GAP = 28;
+
+/**
+ * Changes one column's width by `delta` (a share of the page's width). The
+ * others stay as they are, so together they never get wider than the page;
+ * space given up stays empty on the right.
+ */
+function resizeColumn(shares: number[], i: number, delta: number): number[] {
+  const others = shares.reduce((sum, s, j) => (j === i ? sum : sum + s), 0);
+  const next = [...shares];
+  next[i] = Math.min(1 - others, Math.max(MIN_SHARE, shares[i]! + delta));
+  return next;
+}
+
+/** Starting widths: one column at a comfortable reading width, several sharing the page. */
+function defaultShares(count: number): number[] {
+  return count === 1 ? [0.6] : Array.from({ length: count }, () => 1 / count);
+}
+
+/** Column widths as shares of the page's width, remembered in this browser per number of columns. */
+function useColumnShares(count: number) {
+  const key = `tr-review-widths-${count}`;
+  const even = () => defaultShares(count);
+  const read = (): number[] => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(key) ?? "null");
+      if (
+        Array.isArray(saved) &&
+        saved.length === count &&
+        saved.every((x) => typeof x === "number" && x >= MIN_SHARE) &&
+        saved.reduce((a: number, b: number) => a + b, 0) <= 1.001
+      )
+        return saved as number[];
+    } catch {
+      // No storage here (private window, blocked site data): equal widths.
+    }
+    return even();
+  };
+  const [shares, setShares] = useState<number[]>(read);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: read again when the number of columns changes
+  useEffect(() => setShares(read()), [count]);
+  const save = (next: number[]) => {
+    setShares(next);
+    try {
+      localStorage.setItem(key, JSON.stringify(next));
+    } catch {
+      // Not remembered, but still applied.
+    }
+  };
+  return { shares, setShares, save, reset: () => save(even()) };
 }
 
 /** True when the versions shown don't all have the same text. */
@@ -156,14 +310,40 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [showTags, setShowTags] = useState(false);
+  const [markDifferences, setMarkDifferences] = useState(() => {
+    try {
+      return localStorage.getItem(DIFFERENCES_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  const toggleDifferences = (on: boolean) => {
+    setMarkDifferences(on);
+    try {
+      localStorage.setItem(DIFFERENCES_KEY, on ? "on" : "off");
+    } catch {
+      // Not remembered, but still applied.
+    }
+  };
   const [filter, setFilter] = useState<"all" | "different">("all");
   const [editing, setEditing] = useState<{ unit: ReviewUnit; version: Column } | null>(null);
 
-  const chapters = useQuery({
-    queryKey: ["target", bookId, "chapters"],
-    queryFn: () =>
-      get<{ chapters: ChapterView[] }>(`/api/projects/${pid}/books/${bookId}/chapters`),
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(CHAPTERS_KEY) === "hidden";
+    } catch {
+      return false;
+    }
   });
+  const toggleChapters = () =>
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(CHAPTERS_KEY, c ? "shown" : "hidden");
+      } catch {
+        // Not remembered, but still applied.
+      }
+      return !c;
+    });
   const history = useQuery({
     queryKey: ["target", bookId, "history"],
     queryFn: () => get<HistoryView>(`/api/projects/${pid}/books/${bookId}/history`),
@@ -192,9 +372,42 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   ].slice(0, MAX_COLUMNS);
   const cols = ids.length > 0 ? ids : [SOURCE, CURRENT];
   const columns: Column[] = cols.map((id) => ({ id, label: labelOf(id) }));
-  // Side by side, the versions get the whole window; one column keeps the reading width.
-  useWidePage(columns.length > 1);
+  // The whole window, so columns can be made as wide as you like.
+  useWidePage(true);
+  const widths = useColumnShares(columns.length);
+  const headRef = useRef<HTMLDivElement>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+  /** Drags the right edge of column `i`. */
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>, i: number) => {
+    e.preventDefault();
+    const usable = Math.max(
+      1,
+      (headRef.current?.getBoundingClientRect().width ?? 1) - (columns.length - 1) * GAP,
+    );
+    const startX = e.clientX;
+    const start = widths.shares;
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    setDragging(i);
+    const at = (ev: PointerEvent) => resizeColumn(start, i, (ev.clientX - startX) / usable);
+    const move = (ev: PointerEvent) => widths.setShares(at(ev));
+    const up = (ev: PointerEvent) => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      setDragging(null);
+      widths.save(at(ev));
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+  };
   const versions = cols.filter((c) => c !== SOURCE);
+  const chapters = useQuery({
+    queryKey: ["target", bookId, "review-chapters", versions.join(",")],
+    queryFn: () =>
+      get<{ chapters: ReviewChapter[] }>(
+        `/api/projects/${pid}/books/${bookId}/review/chapters?versions=${versions.join(",")}`,
+      ),
+  });
   const setParam = (key: string, value: string) => {
     const next = new URLSearchParams(params);
     next.set(key, value);
@@ -202,10 +415,14 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   };
   const setCols = (next: string[]) => setParam("cols", next.join(","));
 
-  const list = (chapters.data?.chapters ?? []).filter((c) => c.units > 0);
+  const list = chapters.data?.chapters ?? [];
   const chapterId =
     params.get("chapter") ?? (list.find((c) => c.units >= 20) ?? list[0])?.id ?? null;
   const at = list.findIndex((c) => c.id === chapterId);
+  const go = (id: string) => {
+    setParam("chapter", id);
+    window.scrollTo({ top: 0 });
+  };
 
   // With only the original shown, the current translation is loaded anyway (and not shown).
   const loaded = versions.length > 0 ? versions : [CURRENT];
@@ -272,142 +489,185 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
       </Text>
     );
 
-  const grid = { "--tr-cols": columns.length } as React.CSSProperties;
+  const grid = {
+    "--tr-cols-template": widths.shares
+      .map((s) => `calc((100% - ${(columns.length - 1) * GAP}px) * ${s.toFixed(4)})`)
+      .join(" "),
+  } as React.CSSProperties;
+  const current = list[at];
   return (
-    <Box>
-      <Group justify="space-between" gap="md" mb="md" wrap="wrap">
-        <Group gap={6} wrap="nowrap" style={{ flex: "1 1 420px", minWidth: 0 }}>
-          <ActionIcon
-            variant="default"
-            aria-label="Previous chapter"
-            disabled={at <= 0}
-            onClick={() => setParam("chapter", list[at - 1]!.id)}
-          >
-            <IconChevronLeft size={16} />
-          </ActionIcon>
-          <Select
-            aria-label="Chapter"
-            searchable
-            allowDeselect={false}
-            value={chapterId}
-            onChange={(v) => v && setParam("chapter", v)}
-            data={list.map((c) => ({
-              value: c.id,
-              label: `${displayTitle(c.title)} (${plural(c.units, "passage")})`,
-            }))}
-            style={{ flex: 1, minWidth: 0 }}
-          />
-          <ActionIcon
-            variant="default"
-            aria-label="Next chapter"
-            disabled={at < 0 || at >= list.length - 1}
-            onClick={() => setParam("chapter", list[at + 1]!.id)}
-          >
-            <IconChevronRight size={16} />
-          </ActionIcon>
-        </Group>
-        <Switch
-          size="xs"
-          label="Show tags"
-          checked={showTags}
-          onChange={(e) => setShowTags(e.currentTarget.checked)}
-        />
-      </Group>
-
-      <Group gap="sm" mb="md" wrap="wrap" align="center">
-        {columns.map((col, i) => (
-          <Group key={col.id} gap={2} wrap="nowrap">
-            <Select
-              aria-label={`Column ${i + 1}`}
-              size="xs"
-              w={290}
-              allowDeselect={false}
-              value={col.id}
-              data={options.filter((o) => o.value === col.id || !cols.includes(o.value))}
-              onChange={(v) => v && setCols(cols.map((c) => (c === col.id ? v : c)))}
-            />
-            {columns.length > 1 && (
-              <CloseButton
-                size="sm"
-                aria-label={`Remove column ${i + 1}`}
-                onClick={() => setCols(cols.filter((c) => c !== col.id))}
+    <Box className="tr-review" data-collapsed={collapsed || undefined}>
+      <ChapterList
+        list={list}
+        selected={chapterId}
+        collapsed={collapsed}
+        showDifferences={markDifferences}
+        onToggle={toggleChapters}
+        onSelect={go}
+      />
+      <Box style={{ minWidth: 0 }}>
+        <Group justify="space-between" gap="md" mb="md" wrap="wrap">
+          <Group gap={6} wrap="nowrap" style={{ flex: "1 1 420px", minWidth: 0 }}>
+            <ActionIcon
+              variant="default"
+              aria-label="Previous chapter"
+              disabled={at <= 0}
+              onClick={() => go(list[at - 1]!.id)}
+            >
+              <IconChevronLeft size={16} />
+            </ActionIcon>
+            <ActionIcon
+              variant="default"
+              aria-label="Next chapter"
+              disabled={at < 0 || at >= list.length - 1}
+              onClick={() => go(list[at + 1]!.id)}
+            >
+              <IconChevronRight size={16} />
+            </ActionIcon>
+            <Text className="serif" fw={600} size="lg" truncate ml={6}>
+              {current ? displayTitle(current.title) : ""}
+            </Text>
+          </Group>
+          <Group gap="lg">
+            {versions.length > 1 && (
+              <Switch
+                size="xs"
+                label="Mark differences"
+                checked={markDifferences}
+                onChange={(e) => toggleDifferences(e.currentTarget.checked)}
               />
             )}
+            <Switch
+              size="xs"
+              label="Show tags"
+              checked={showTags}
+              onChange={(e) => setShowTags(e.currentTarget.checked)}
+            />
           </Group>
-        ))}
-        {columns.length < MAX_COLUMNS && options.some((o) => !cols.includes(o.value)) && (
-          <Button
-            size="xs"
-            variant="subtle"
-            leftSection={<IconPlus size={14} />}
-            onClick={() => setCols([...cols, options.find((o) => !cols.includes(o.value))!.value])}
-          >
-            Add column
-          </Button>
-        )}
-        {versions.length > 1 && (
-          <SegmentedControl
-            size="xs"
-            ml="auto"
-            value={filter}
-            onChange={(v) => setFilter(v as "all" | "different")}
-            data={[
-              { value: "all", label: `All ${all.length}` },
-              { value: "different", label: `Different ${different.length}` },
-            ]}
-          />
-        )}
-      </Group>
+        </Group>
 
-      <div className="tr-cmp-head" style={grid}>
-        {columns.map((c) => (
-          <div key={c.id}>{c.label}</div>
-        ))}
-      </div>
-      {review.isLoading && <Loader size="sm" />}
-      {review.data && units.length === 0 && (
-        <Text size="md" c="dimmed" py="xl">
-          {filter === "different"
-            ? "The versions shown are the same in this chapter."
-            : "This chapter has no text."}
-        </Text>
-      )}
-      <div ref={listRef} style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
-        {virtualizer.getVirtualItems().map((item) => {
-          const unit = units[item.index]!;
-          return (
-            <div
-              key={unit.key}
-              data-index={item.index}
-              ref={virtualizer.measureElement}
-              className="tr-spread-row tr-cmp-row"
-              data-role={unit.role}
-              data-differs={(versions.length > 1 && differs(unit, versions)) || undefined}
-              style={{
-                ...grid,
-                position: "absolute",
-                top: 0,
-                left: 0,
-                width: "100%",
-                transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)`,
-              }}
-            >
-              {columns.map((col) => (
-                <Cell
-                  key={col.id}
-                  unit={unit}
-                  column={col}
-                  others={columns.filter((o) => o.id !== col.id && o.id !== SOURCE)}
-                  showTags={showTags}
-                  onEdit={() => setEditing({ unit, version: col })}
-                  onCopy={(to) => copy(unit, col, to)}
-                  onRevert={() => revert(unit, col)}
+        <Group gap="sm" mb="md" wrap="wrap" align="center">
+          {columns.map((col, i) => (
+            <Group key={col.id} gap={2} wrap="nowrap">
+              <Select
+                aria-label={`Column ${i + 1}`}
+                size="xs"
+                w={290}
+                allowDeselect={false}
+                value={col.id}
+                data={options.filter((o) => o.value === col.id || !cols.includes(o.value))}
+                onChange={(v) => v && setCols(cols.map((c) => (c === col.id ? v : c)))}
+              />
+              {columns.length > 1 && (
+                <CloseButton
+                  size="sm"
+                  aria-label={`Remove column ${i + 1}`}
+                  onClick={() => setCols(cols.filter((c) => c !== col.id))}
                 />
-              ))}
+              )}
+            </Group>
+          ))}
+          {columns.length < MAX_COLUMNS && options.some((o) => !cols.includes(o.value)) && (
+            <Button
+              size="xs"
+              variant="subtle"
+              leftSection={<IconPlus size={14} />}
+              onClick={() =>
+                setCols([...cols, options.find((o) => !cols.includes(o.value))!.value])
+              }
+            >
+              Add column
+            </Button>
+          )}
+          {versions.length > 1 && (
+            <SegmentedControl
+              size="xs"
+              ml="auto"
+              value={filter}
+              onChange={(v) => setFilter(v as "all" | "different")}
+              data={[
+                { value: "all", label: `All ${all.length}` },
+                { value: "different", label: `Different ${different.length}` },
+              ]}
+            />
+          )}
+        </Group>
+
+        <div className="tr-cmp-head" style={grid} ref={headRef}>
+          {columns.map((c, i) => (
+            <div key={c.id} className="tr-cmp-title">
+              {c.label}
+              {/* biome-ignore lint/a11y/useSemanticElements: a draggable column edge, not a rule */}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={`Width of ${c.label}`}
+                aria-valuenow={Math.round(widths.shares[i]! * 100)}
+                aria-valuemin={Math.round(MIN_SHARE * 100)}
+                aria-valuemax={100}
+                tabIndex={0}
+                title="Drag to change this column's width; double-click to reset all"
+                className="tr-cmp-resize"
+                data-dragging={dragging === i || undefined}
+                onPointerDown={(e) => startDrag(e, i)}
+                onDoubleClick={widths.reset}
+                onKeyDown={(e) => {
+                  const step = e.key === "ArrowLeft" ? -0.02 : e.key === "ArrowRight" ? 0.02 : 0;
+                  if (!step) return;
+                  e.preventDefault();
+                  widths.save(resizeColumn(widths.shares, i, step));
+                }}
+              />
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
+        {review.isLoading && <Loader size="sm" />}
+        {review.data && units.length === 0 && (
+          <Text size="md" c="dimmed" py="xl">
+            {filter === "different"
+              ? "The versions shown are the same in this chapter."
+              : "This chapter has no text."}
+          </Text>
+        )}
+        <div ref={listRef} style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+          {virtualizer.getVirtualItems().map((item) => {
+            const unit = units[item.index]!;
+            return (
+              <div
+                key={unit.key}
+                data-index={item.index}
+                ref={virtualizer.measureElement}
+                className="tr-spread-row tr-cmp-row"
+                data-role={unit.role}
+                data-differs={
+                  (markDifferences && versions.length > 1 && differs(unit, versions)) || undefined
+                }
+                style={{
+                  ...grid,
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)`,
+                }}
+              >
+                {columns.map((col) => (
+                  <Cell
+                    key={col.id}
+                    unit={unit}
+                    column={col}
+                    others={columns.filter((o) => o.id !== col.id && o.id !== SOURCE)}
+                    showTags={showTags}
+                    onEdit={() => setEditing({ unit, version: col })}
+                    onCopy={(to) => copy(unit, col, to)}
+                    onRevert={() => revert(unit, col)}
+                  />
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </Box>
       <RewriteModal
         pid={pid}
         bookId={bookId}

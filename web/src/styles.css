@@ -413,8 +413,45 @@ a.tr-context:hover {
 .tr-cmp-head,
 .tr-cmp-row {
   display: grid;
-  grid-template-columns: repeat(var(--tr-cols, 2), minmax(0, 1fr));
+  grid-template-columns: var(--tr-cols-template, repeat(2, minmax(0, 1fr)));
   column-gap: 28px;
+}
+
+.tr-cmp-title {
+  position: relative;
+  min-width: 0;
+}
+
+/* Drag handle in the gap after a column title. */
+.tr-cmp-resize {
+  position: absolute;
+  top: -6px;
+  bottom: -9px;
+  right: -19px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.tr-cmp-resize::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--tr-rule-strong);
+}
+
+.tr-cmp-resize:hover::after,
+.tr-cmp-resize:focus-visible::after,
+.tr-cmp-resize[data-dragging]::after {
+  background: var(--tr-bookcloth);
+}
+
+.tr-cmp-resize:focus-visible {
+  outline: none;
 }
 
 .tr-cmp-head {
@@ -763,8 +800,15 @@ a.tr-context:hover {
   align-items: start;
 }
 
+/* Review with the chapter list hidden: just the button to show it. */
+.tr-review[data-collapsed] {
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 16px;
+}
+
 @media (max-width: 62em) {
-  .tr-review {
+  .tr-review,
+  .tr-review[data-collapsed] {
     grid-template-columns: minmax(0, 1fr);
   }
   .tr-chapters {

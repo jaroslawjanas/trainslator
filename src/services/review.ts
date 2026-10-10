@@ -72,6 +72,39 @@ async function chapterKeys(app: AppContext, pid: string, bookId: string, chapter
   return chapter.chunks.flatMap((i) => plan.chunks[i]?.unitKeys ?? []);
 }
 
+/**
+ * The chapters with passages, each with how many of its passages differ
+ * between the versions shown (null with fewer than two versions).
+ */
+export async function reviewChapters(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  versions: string[],
+) {
+  const plan = await loadPlan(app, pid, bookId);
+  if (!plan) return { chapters: [] };
+  const cells =
+    versions.length > 1
+      ? await Promise.all(versions.map((v) => versionCells(app, pid, bookId, v)))
+      : [];
+  return {
+    chapters: plan.chapters
+      .map((ch) => {
+        const keys = ch.chunks.flatMap((i) => plan.chunks[i]?.unitKeys ?? []);
+        const different =
+          cells.length > 1
+            ? keys.filter((k) => {
+                const texts = cells.map((c) => c(k).text);
+                return texts.some((t) => t !== texts[0]);
+              }).length
+            : null;
+        return { id: ch.id, title: ch.title, units: keys.length, different };
+      })
+      .filter((c) => c.units > 0),
+  };
+}
+
 export async function reviewUnits(
   app: AppContext,
   pid: string,

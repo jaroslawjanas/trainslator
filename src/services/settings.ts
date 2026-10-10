@@ -180,6 +180,23 @@ export class SettingsService {
   }
 
   /**
+   * A step's settings with another model chosen for one request (e.g. "draft
+   * with" a model picked on the page). No advisor.
+   */
+  targetWith(step: Step, modelId: string): CallTarget {
+    const model = this.model(modelId);
+    if (!model) throw new UserError("That model no longer exists.");
+    const connection = this.connection(model.connectionId);
+    if (!connection)
+      throw new LlmError("config", `The connection of model "${model.label}" no longer exists.`);
+    return {
+      connection,
+      model,
+      step: { ...this.current.steps[step], modelId: model.id, consultAdvisor: false },
+    };
+  }
+
+  /**
    * The advisor a step may consult, or null when the advisor is off, the
    * step may not, or its model can't call tools (Claude Code).
    */

@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Drawer,
+  Fieldset,
   Group,
   Select,
   Stack,
@@ -137,9 +138,12 @@ export function EntryDrawer({
   onUnlock,
   onDelete,
   onAsk,
+  languages,
 }: {
   entry: KbEntry | null;
   isNew: boolean;
+  /** The book's languages, e.g. English and Polish, to say which fields are in which. */
+  languages: { source: string; target: string };
   onClose: () => void;
   onSave: (e: KbEntry) => Promise<void>;
   /** Save without locking: later runs may still change the entry. */
@@ -226,26 +230,38 @@ export function EntryDrawer({
             onChange={(v) => set({ treatment: (v as KbEntry["treatment"]) ?? null })}
           />
         </Group>
-        <TextInput
-          label="English"
-          value={e.source}
-          onChange={(x) => set({ source: x.currentTarget.value })}
-        />
-        <TagsInput
-          label="Also written as (aliases)"
-          value={e.aliases}
-          onChange={(v) => set({ aliases: v })}
-        />
-        <TextInput
-          label="Translation (dictionary form)"
-          value={e.target ?? ""}
-          onChange={(x) => set({ target: x.currentTarget.value || null })}
-        />
-        <TagsInput
-          label="Other forms seen"
-          value={e.targetSeen}
-          onChange={(v) => set({ targetSeen: v })}
-        />
+        <Fieldset legend={`${languages.source}: the original`}>
+          <Stack gap="sm">
+            <TextInput
+              label="Name or term"
+              description={`As it appears in the ${languages.source} text.`}
+              value={e.source}
+              onChange={(x) => set({ source: x.currentTarget.value })}
+            />
+            <TagsInput
+              label="Also written as"
+              description={`Other spellings or short forms in ${languages.source}, e.g. a nickname.`}
+              value={e.aliases}
+              onChange={(v) => set({ aliases: v })}
+            />
+          </Stack>
+        </Fieldset>
+        <Fieldset legend={`${languages.target}: the translation`}>
+          <Stack gap="sm">
+            <TextInput
+              label="Translation"
+              description="Its dictionary form: the form a dictionary would list."
+              value={e.target ?? ""}
+              onChange={(x) => set({ target: x.currentTarget.value || null })}
+            />
+            <TagsInput
+              label={`Other forms in ${languages.target}`}
+              description="Inflected forms and variants that appear in the translated text."
+              value={e.targetSeen}
+              onChange={(v) => set({ targetSeen: v })}
+            />
+          </Stack>
+        </Fieldset>
         <Stack gap={6}>
           <Group justify="space-between">
             <Text size="sm" fw={500}>

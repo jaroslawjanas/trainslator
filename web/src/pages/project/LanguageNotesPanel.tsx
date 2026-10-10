@@ -1,4 +1,4 @@
-import { Box, Button, Group, Stack, Text, Textarea } from "@mantine/core";
+import { Box, Button, Group, Select, Stack, Text, Textarea } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { JobRow } from "../../components/JobsIndicator.tsx";
 import { Markdown } from "../../components/Markdown.tsx";
 import { PageHeader } from "../../components/PageHeader.tsx";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
+import { useSettings } from "../SettingsPage.tsx";
 
 export function LanguageNotesPanel({
   project,
@@ -25,11 +26,19 @@ export function LanguageNotesPanel({
   useEffect(() => setText(notes), [notes]);
   const dirty = text !== notes;
   const running = job !== undefined && ACTIVE_JOB.includes(job.status);
+  // The model that drafts: the utility step's unless you pick another.
+  const settings = useSettings().data?.settings;
+  const [modelId, setModelId] = useState<string | null>(null);
+  const chosen = modelId ?? settings?.steps.utility.modelId ?? settings?.models[0]?.id ?? null;
+  const models = (settings?.models ?? []).map((m) => ({
+    value: m.id,
+    label: `${m.label || m.modelName} (${settings?.connections.find((c) => c.id === m.connectionId)?.name ?? "?"})`,
+  }));
 
   const generate = async () => {
     if (notes.trim() && !window.confirm("Replace the current notes with a new draft?")) return;
     try {
-      await post(`/api/projects/${project.id}/language-notes/generate`);
+      await post(`/api/projects/${project.id}/language-notes/generate`, { modelId: chosen });
       void client.invalidateQueries({ queryKey: ["jobs"] });
     } catch (e) {
       notifications.show({ color: "red", title: "Couldn't start", message: (e as Error).message });
@@ -59,7 +68,16 @@ export function LanguageNotesPanel({
         actions={
           !editing && (
             <>
-              <Button variant="default" onClick={generate} loading={running}>
+              <Select
+                aria-label="Model that drafts the notes"
+                data={models}
+                value={chosen}
+                onChange={setModelId}
+                allowDeselect={false}
+                disabled={running}
+                w={280}
+              />
+              <Button variant="default" onClick={generate} loading={running} disabled={!chosen}>
                 {notes.trim() ? "Draft again with AI" : "Draft with AI"}
               </Button>
               <Button

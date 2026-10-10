@@ -103,6 +103,17 @@ describe("review", () => {
       edited: true,
     });
     expect(keeper(units).versions.current!.edited).toBe(false);
+    // The chapter list counts the passages that differ between the versions.
+    const { chapters } = await srv!.json<{
+      chapters: { id: string; units: number; different: number | null }[];
+    }>("GET", `${base}/review/chapters?versions=current,${saved}`);
+    expect(chapters.find((c) => c.id === chapter)).toMatchObject({ different: 1 });
+    expect(chapters.filter((c) => c.id !== chapter).every((c) => c.different === 0)).toBe(true);
+    const single = await srv!.json<{ chapters: { different: number | null }[] }>(
+      "GET",
+      `${base}/review/chapters?versions=current`,
+    );
+    expect(single.chapters.every((c) => c.different === null)).toBe(true);
     // The saved translation now differs from the current one.
     const history = await srv!.json<{ current: { savedAs: string | null } }>(
       "GET",

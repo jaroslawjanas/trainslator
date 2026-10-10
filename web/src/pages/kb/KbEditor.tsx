@@ -21,6 +21,7 @@ import { notifications } from "@mantine/notifications";
 import { IconLock, IconQuestionMark, IconSearch, IconX } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { languageDisplayName } from "../../../../src/shared/languages.ts";
 import {
   KB_KINDS,
   type Kb,
@@ -30,6 +31,7 @@ import {
 } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
 import { count, plural } from "../../lib/format.ts";
+import { useProject } from "../ProjectPage.tsx";
 import { EntryDrawer, type KbAnswer } from "./EntryDrawer.tsx";
 
 export const KIND_TEXT: Record<string, string> = {
@@ -222,14 +224,22 @@ function StyleRules({
   );
 }
 
-function EntryTable({ entries, onOpen }: { entries: KbEntry[]; onOpen: (e: KbEntry) => void }) {
+function EntryTable({
+  entries,
+  onOpen,
+  languages,
+}: {
+  entries: KbEntry[];
+  onOpen: (e: KbEntry) => void;
+  languages: { source: string; target: string };
+}) {
   return (
     <Table.ScrollContainer minWidth={760}>
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th w="24%">English</Table.Th>
-            <Table.Th w="24%">Translation</Table.Th>
+            <Table.Th w="24%">{languages.source}</Table.Th>
+            <Table.Th w="24%">{languages.target}</Table.Th>
             <Table.Th>Facts and notes</Table.Th>
             <Table.Th w={110}>Kind</Table.Th>
             <Table.Th w={32} />
@@ -316,6 +326,11 @@ export function KbEditor({
   targetId: string;
 }) {
   const client = useQueryClient();
+  const project = useProject(pid).data?.project;
+  const languages = {
+    source: languageDisplayName(project?.sourceLang ?? "en"),
+    target: project?.targetLangName || "Translation",
+  };
   const base = `/api/projects/${pid}/${scope === "pair" ? "pairs" : "books"}/${targetId}/kb`;
   const queryKey = ["target", targetId, "kb"];
   const { data, isLoading, error } = useQuery({
@@ -389,7 +404,7 @@ export function KbEditor({
                 The AI couldn't decide these yet. Answer them to lock the entries; later chapters
                 may also answer them.
               </Text>
-              <EntryTable entries={open} onOpen={open_} />
+              <EntryTable entries={open} onOpen={open_} languages={languages} />
             </Box>
           )}
           <Group align="flex-end" mb="md" gap="sm">
@@ -429,7 +444,7 @@ export function KbEditor({
                 : "No entries match."}
             </Text>
           ) : (
-            <EntryTable entries={entries} onOpen={open_} />
+            <EntryTable entries={entries} onOpen={open_} languages={languages} />
           )}
         </Tabs.Panel>
         <Tabs.Panel value="style">
@@ -470,6 +485,7 @@ export function KbEditor({
         }
         onDelete={(e) => call(() => del<{ kb: Kb }>(`${base}/entries/${e.id}`), "Entry deleted.")}
         onAsk={(e, modelId) => post<KbAnswer>(`${base}/entries/${e.id}/ask`, { modelId })}
+        languages={languages}
       />
     </>
   );

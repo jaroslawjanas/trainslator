@@ -24,6 +24,7 @@ import {
   CURRENT,
   editVersionUnit,
   revertVersionUnit,
+  reviewChapters,
   reviewUnits,
   rewritePassage,
 } from "../../services/review.ts";
@@ -210,6 +211,13 @@ export function bookRoutes(app: AppContext): Hono {
   );
 
   // Review: versions side by side ---------------------------------------------
+
+  r.get("/:pid/books/:bookId/review/chapters", async (c) => {
+    const versions = (c.req.query("versions") ?? "").split(",").filter(Boolean);
+    if (versions.length > 3 || !versions.every((v) => ID_RE.test(v)))
+      throw new HttpError(400, "bad_request", "Choose up to three versions.");
+    return c.json(await reviewChapters(app, idParam(c, "pid"), idParam(c, "bookId"), versions));
+  });
 
   r.get("/:pid/books/:bookId/chapters/:cid/review", async (c) => {
     const versions = (c.req.query("versions") ?? CURRENT).split(",").filter(Boolean);

@@ -81,12 +81,22 @@ export function projectRoutes(app: AppContext): Hono {
   r.post("/:pid/language-notes/generate", async (c) => {
     const pid = idParam(c, "pid");
     await app.projects.get(pid);
-    app.settings.target("utility");
+    // The model picked on the page, or the utility step's.
+    const { modelId } = await jsonBody(
+      c,
+      z.object({ modelId: z.string().nullable().default(null) }),
+      {
+        optional: true,
+      },
+    );
+    if (modelId) app.settings.targetWith("utility", modelId);
+    else app.settings.target("utility");
     const job = app.runner.start({
       type: "language-notes",
       projectId: pid,
       targetKind: "project",
       targetId: pid,
+      params: modelId ? { modelId } : {},
     });
     return c.json({ job }, 202);
   });

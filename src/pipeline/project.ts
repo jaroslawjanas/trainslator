@@ -8,7 +8,11 @@ export async function languageNotesJob(app: AppContext, job: JobContext): Promis
   const projectId = job.job.projectId;
   const project = await app.projects.get(projectId);
   job.progress(0, 1, "Writing language notes");
-  const result = await callStructured(app.rt, app.settings.target("utility"), {
+  const modelId = typeof job.job.params.modelId === "string" ? job.job.params.modelId : null;
+  const target = modelId
+    ? app.settings.targetWith("utility", modelId)
+    : app.settings.target("utility");
+  const result = await callStructured(app.rt, target, {
     projectId,
     step: "utility",
     label: "language notes",
