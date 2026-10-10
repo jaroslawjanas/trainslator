@@ -11,6 +11,8 @@ export function phaseMark(state: string): MarkState {
       return "done";
     case "running":
       return "running";
+    case "stopped":
+      return "warning";
     case "done_with_errors":
       return "warning";
     case "failed":
@@ -26,6 +28,8 @@ export function phaseText(state: string): string {
       return "Done";
     case "running":
       return "Running";
+    case "stopped":
+      return "Stopped before it finished";
     case "done_with_errors":
       return "Done, with errors";
     case "failed":
@@ -73,6 +77,7 @@ export const BOOK_STAGES: StageDef[] = [
         ? "running"
         : phaseMark(c.book?.phase3.state ?? "none"),
   },
+  { key: "review", label: "Review", mark: () => "neutral" },
   {
     key: "build",
     label: "Build",
@@ -83,6 +88,7 @@ export const BOOK_STAGES: StageDef[] = [
           ? "done"
           : "none",
   },
+  { key: "history", label: "History", mark: () => "neutral" },
 ];
 
 export const PAIR_STAGES: StageDef[] = [

@@ -68,7 +68,7 @@ const connection: Connection = {
   baseUrl: values["base-url"],
   apiKey: values["key-env"] ? { kind: "env", name: values["key-env"] } : { kind: "none" },
   headers: [],
-  maxParallel: null,
+  maxParallel: Number(values.parallel),
   timeoutSec: 1800,
   idleTimeoutSec: 600,
   maxRetries: 4,
@@ -81,7 +81,6 @@ const model: Model = {
   label: values.model,
   contextWindow: Number(values.context),
   maxOutputTokens: Number(values["max-output"]),
-  maxParallel: Number(values.parallel),
   pricing: null,
   ...KIND_PRESETS[kind].model,
 };

@@ -56,8 +56,9 @@ export function TestModal({
     <Modal opened={opened} onClose={onClose} title={`Test ${model.label}`} size="lg">
       <Stack>
         <Text size="sm">
-          Sends {deep ? "about 6" : "2–4"} small requests to check that the model answers, returns
-          valid JSON, accepts its parameters and can switch reasoning.
+          Sends {deep ? "about 7" : "3–5"} small requests to check that the model answers, returns
+          valid JSON, accepts its parameters, can switch reasoning and can call tools (needed to
+          consult the advisor).
         </Text>
         <Checkbox
           label="Also check long prompts and caching (sends a prompt of up to 24,000 tokens twice)"

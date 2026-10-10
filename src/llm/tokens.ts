@@ -30,14 +30,20 @@ export function estimateTokens(text: string, factor = 1): number {
   return Math.ceil(tokens * factor);
 }
 
+/**
+ * Room for thinking by effort, until a model has reported enough of its
+ * own usage. Generous on purpose: it only sets the ceiling (the effort sent
+ * to the model decides how much it thinks), and a model that runs into the
+ * ceiling has to be asked again.
+ */
 const DEFAULT_ALLOWANCE: Record<string, number> = {
   none: 0,
-  minimal: 1000,
-  low: 2000,
-  medium: 8000,
-  high: 16000,
-  xhigh: 32000,
-  max: 32000,
+  minimal: 2000,
+  low: 4000,
+  medium: 16000,
+  high: 32000,
+  xhigh: 48000,
+  max: 64000,
 };
 
 /** 95th percentile of a list (null when empty). */
@@ -57,13 +63,15 @@ export function reasoningAllowance(options: {
   budgetTokens: number | null;
   mode: "optional" | "on_by_default" | "mandatory";
   samples: number[];
+  /** Multiplies the effort default (see thinkingRoomFactor in presets.ts). */
+  factor?: number;
 }): number {
   const reasons = options.enabled || options.mode !== "optional";
   if (!reasons) return 0;
   if (options.budgetTokens) return options.budgetTokens;
   const observed = options.samples.length >= 5 ? percentile95(options.samples) : null;
   const effort = (options.effort ?? "medium").toLowerCase();
-  const fallback = DEFAULT_ALLOWANCE[effort] ?? DEFAULT_ALLOWANCE.medium!;
+  const fallback = (DEFAULT_ALLOWANCE[effort] ?? DEFAULT_ALLOWANCE.medium!) * (options.factor ?? 1);
   if (observed === null) return fallback;
-  return Math.max(512, Math.ceil(observed * 1.2));
+  return Math.max(1024, Math.ceil(observed * 1.5));
 }

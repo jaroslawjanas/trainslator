@@ -95,8 +95,14 @@ export async function importPair(
   return pair;
 }
 
+/** The pair as the app shows it: phase 1 is "stopped" if saved as running but no job runs. */
+export function livePair(app: AppContext, pair: Pair): Pair {
+  if (pair.phase1.state !== "running" || app.runner.activeFor(pair.id)) return pair;
+  return { ...pair, phase1: { ...pair.phase1, state: "stopped" } };
+}
+
 export async function pairDetail(app: AppContext, pid: string, pairId: string) {
-  const pair = await app.projects.pair(pid, pairId);
+  const pair = livePair(app, await app.projects.pair(pid, pairId));
   const [source, target, alignment] = await Promise.all([
     loadStructure(app, pid, pairId, "source"),
     loadStructure(app, pid, pairId, "target"),

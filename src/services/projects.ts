@@ -74,10 +74,17 @@ export class ProjectStore {
       targetScript: scriptOf(tag),
       direction: directionOf(tag),
       options: { pauseAfterPhase: true },
+      usageResetAt: null,
       createdAt: now,
       updatedAt: now,
     };
     return writeJson(this.paths.projectFile(project.id), Project, project);
+  }
+
+  /** Starts the Usage page's counts from now. */
+  async resetUsage(id: string): Promise<Project> {
+    const p = await this.get(id);
+    return writeJson(this.paths.projectFile(id), Project, { ...p, usageResetAt: nowIso() });
   }
 
   async update(id: string, patch: { name?: string; pauseAfterPhase?: boolean }): Promise<Project> {

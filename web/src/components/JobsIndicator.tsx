@@ -67,7 +67,7 @@ export function jobHref(job: Job): string {
 
 function detailText(job: Job): string {
   const parts: string[] = [];
-  if (job.error) parts.push(job.error);
+  if (job.error) parts.push(job.error.replace(/\.$/, ""));
   else if (job.progress.label) parts.push(job.progress.label);
   const extra: string[] = [];
   if (ACTIVE_JOB.includes(job.status) && job.progress.total > 0)

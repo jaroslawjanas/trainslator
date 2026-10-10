@@ -54,3 +54,59 @@ export interface UnitView {
   errors: string[];
   instruction: string | null;
 }
+
+export interface SavedTranslationView {
+  id: string;
+  number: number;
+  savedAt: string;
+  reason: "run" | "redo" | "restore" | "build" | "manual";
+  modes: ("chunks" | "chapters")[];
+  models: string[];
+  reasoning: string[];
+  usage: { cost: number | null; calls: number };
+  counts: {
+    units: number;
+    ok: number;
+    flagged: number;
+    refused: number;
+    pending: number;
+    edited: number;
+  };
+  builds: { id: string; builtAt: string; fileName: string; bytes: number }[];
+}
+
+export interface SavedKnowledgeView {
+  id: string;
+  number: number;
+  savedAt: string;
+  reason: "rebuild" | "restore";
+  entries: number;
+  open: number;
+  locked: number;
+}
+
+export interface HistoryView {
+  knowledgeBases: SavedKnowledgeView[];
+  /** The saved knowledge base the current one matches, if any. */
+  currentKnowledge: string | null;
+  translations: SavedTranslationView[];
+  /** The book's translation now: which saved one it matches, if any. */
+  current: { savedAs: string | null } | null;
+}
+
+export interface VersionCell {
+  text: string | null;
+  status: "ok" | "flagged" | "refused" | "pending" | "edited";
+  edited: boolean;
+}
+
+/** A passage on the Review page, in every version shown. */
+export interface ReviewUnit {
+  key: string;
+  urlKey: string;
+  role: string;
+  source: string;
+  placeholders: { n: number; kind: "g" | "x"; label: string; required: boolean }[];
+  /** By version: "current" or a saved translation's id. */
+  versions: Record<string, VersionCell>;
+}

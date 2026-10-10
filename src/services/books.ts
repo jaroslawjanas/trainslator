@@ -5,9 +5,9 @@ import type { AppContext } from "../server/context.ts";
 import { newId, nowIso } from "../shared/schemas/common.ts";
 import { BookSetup, EpubStructure } from "../shared/schemas/epub.ts";
 import { Kb } from "../shared/schemas/kb.ts";
-import type { Book, RefKbMode } from "../shared/schemas/project.ts";
+import type { Book, RefKbMode, TranslationMode } from "../shared/schemas/project.ts";
 import { readJson, removePath, writeFileAtomic, writeJson } from "../store/json.ts";
-import { safeFileName, segmentsAt } from "./pairs.ts";
+import { livePair, safeFileName, segmentsAt } from "./pairs.ts";
 import { NotFoundError, UserError } from "./projects.ts";
 
 export async function loadBookStructure(
@@ -56,6 +56,7 @@ export async function importBook(
     sourceFileName: safeFileName(file.name),
     pairIds: pairs.map((p) => p.id),
     refKbMode: "auto",
+    translationMode: "chunks",
     options: { newIdentifier: true, removeEmbeddedFonts: false },
     createdAt: nowIso(),
     phase2: { state: "none", finishedAt: null, stepsDone: 0 },
@@ -77,6 +78,7 @@ export async function updateBook(
   patch: {
     pairIds?: string[];
     refKbMode?: RefKbMode;
+    translationMode?: TranslationMode;
     options?: Partial<Book["options"]>;
     title?: string;
   },
@@ -92,6 +94,7 @@ export async function updateBook(
     title: patch.title?.trim() || book.title,
     pairIds: patch.pairIds ?? book.pairIds,
     refKbMode: patch.refKbMode ?? book.refKbMode,
+    translationMode: patch.translationMode ?? book.translationMode,
     options: { ...book.options, ...patch.options },
   });
 }
@@ -157,6 +160,14 @@ export async function referenceSelection(app: AppContext, pid: string, book: Boo
   );
 }
 
+/** The book as the app shows it: a phase saved as running whose job isn't active is "stopped". */
+export function liveBook(app: AppContext, book: Book): Book {
+  const active = app.runner.activeFor(book.id)?.type;
+  const live = <T extends { state: Book["phase2"]["state"] }>(phase: T, type: string): T =>
+    phase.state === "running" && active !== type ? { ...phase, state: "stopped" } : phase;
+  return { ...book, phase2: live(book.phase2, "phase2"), phase3: live(book.phase3, "phase3") };
+}
+
 export async function bookDetail(app: AppContext, pid: string, bookId: string) {
   const book = await app.projects.book(pid, bookId);
   const structure = await loadBookStructure(app, pid, bookId);
@@ -164,10 +175,10 @@ export async function bookDetail(app: AppContext, pid: string, bookId: string) {
   const pairs = await app.projects.pairs(pid);
   const selection = await referenceSelection(app, pid, book);
   return {
-    book,
+    book: liveBook(app, book),
     structure,
     setup,
-    pairs,
+    pairs: pairs.map((p) => livePair(app, p)),
     reference: {
       mode: selection.mode,
       tokens: selection.tokens,

@@ -1,8 +1,10 @@
-import { Box, Button, Group, Stack, Text } from "@mantine/core";
-import type { ReactNode } from "react";
-import type { Job } from "../api/types.ts";
+import { Box, Button, Group, Stack, Text, UnstyledButton } from "@mantine/core";
+import { IconChevronRight } from "@tabler/icons-react";
+import { type ReactNode, useState } from "react";
+import type { Job, Settings } from "../api/types.ts";
 import { relativeTime } from "../lib/format.ts";
 import { ACTIVE_JOB, type MarkState, phaseMark, phaseText } from "../lib/stages.ts";
+import { JobDetails } from "./JobDetails.tsx";
 import { JobRow } from "./JobsIndicator.tsx";
 import { StageMark } from "./StageMark.tsx";
 
@@ -12,6 +14,12 @@ export interface Pricing {
   outputPerM: number;
 }
 
+/** Whether a model runs on a Claude subscription (Claude Code), so its requests cost nothing. */
+export function onSubscription(settings: Settings | undefined, modelId: string | null | undefined) {
+  const model = settings?.models.find((m) => m.id === modelId);
+  return settings?.connections.find((c) => c.id === model?.connectionId)?.kind === "claude_code";
+}
+
 /** "About 90,000 input tokens (27,000 of them cacheable) and 9,000 output tokens, about $0.12." */
 export function estimateText(e: {
   input: number;
@@ -19,11 +27,15 @@ export function estimateText(e: {
   output: number;
   pricing: Pricing | null | undefined;
   prefix?: string;
+  /** Claude Code: the subscription pays. */
+  subscription?: boolean;
 }): string {
   const cached =
     e.cached && e.cached > 0 ? ` (${e.cached.toLocaleString()} of them cacheable)` : "";
   let text = `${e.prefix ?? "About"} ${e.input.toLocaleString()} input tokens${cached} and ${e.output.toLocaleString()} output tokens`;
-  if (e.pricing) {
+  if (e.subscription) {
+    text += ", covered by your Claude subscription.";
+  } else if (e.pricing) {
     const fresh = e.input - (e.cached ?? 0);
     const cachedPrice = e.pricing.cachedInputPerM ?? e.pricing.inputPerM;
     const cost =
@@ -70,8 +82,10 @@ export function RunPanel({
   children?: ReactNode;
 }) {
   const running = job !== undefined && ACTIVE_JOB.includes(job.status);
-  const mark: MarkState = running ? "running" : phaseMark(state);
-  const done = state === "done" || state === "done_with_errors";
+  // Saved as running but no job runs (e.g. the page hasn't caught up with a restart).
+  const shown = !running && state === "running" ? "stopped" : state;
+  const mark: MarkState = running ? "running" : phaseMark(shown);
+  const done = shown === "done" || shown === "done_with_errors";
   return (
     <Box
       p="md"
@@ -87,7 +101,7 @@ export function RunPanel({
           <Group gap={8} wrap="nowrap">
             <StageMark state={mark} />
             <Text fw={500} size="md">
-              {running ? "Running" : phaseText(state)}
+              {running ? "Running" : phaseText(shown)}
               {!running && done && finishedAt && (
                 <Text span c="dimmed" fw={400}>
                   {" "}
@@ -116,12 +130,44 @@ export function RunPanel({
           )}
         </Group>
       </Group>
+      {children}
       {job && (running || ["failed", "paused", "interrupted"].includes(job.status)) && (
         <Box mt="md">
           <JobRow job={job} showTitle={false} />
         </Box>
       )}
-      {children}
+      {job && <RunDetails job={job} running={running} />}
+    </Box>
+  );
+}
+
+/** Stages and requests: open while the job runs, behind a toggle afterwards. */
+function RunDetails({ job, running }: { job: Job; running: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (running)
+    return (
+      <Box mt="md" pt="md" style={{ borderTop: "1px solid var(--tr-rule)" }}>
+        <JobDetails job={job} />
+      </Box>
+    );
+  return (
+    <Box mt="md">
+      <UnstyledButton onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+        <Group gap={4}>
+          <IconChevronRight
+            size={14}
+            style={{ transform: open ? "rotate(90deg)" : undefined, transition: "transform 120ms" }}
+          />
+          <Text size="sm" c="dimmed">
+            Details of the last run
+          </Text>
+        </Group>
+      </UnstyledButton>
+      {open && (
+        <Box mt="sm">
+          <JobDetails job={job} />
+        </Box>
+      )}
     </Box>
   );
 }

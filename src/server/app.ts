@@ -15,6 +15,8 @@ import { securityMiddleware } from "./security.ts";
 export interface AppOptions {
   /** Serve the built web UI from this folder (production). */
   staticDir?: string;
+  /** Under pnpm dev: send page requests to the Vite dev server on this port. */
+  devWebPort?: number;
 }
 
 export function createApp(ctx: AppContext, options: AppOptions = {}): Hono {
@@ -45,6 +47,15 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Hono {
   app.all("/api/*", (c) =>
     c.json({ error: { code: "not_found", message: "Unknown API route." } }, 404),
   );
+
+  const { devWebPort } = options;
+  if (devWebPort) {
+    app.get("*", (c) => {
+      const url = new URL(c.req.url);
+      url.port = String(devWebPort);
+      return c.redirect(url.toString());
+    });
+  }
 
   if (options.staticDir) {
     const root = path.resolve(options.staticDir);

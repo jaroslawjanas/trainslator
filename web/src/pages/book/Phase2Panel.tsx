@@ -1,13 +1,16 @@
 import { Accordion, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ModelNote } from "../../components/ModelNote.tsx";
 import { Section } from "../../components/PageHeader.tsx";
-import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { useSettings } from "../SettingsPage.tsx";
+import { RebuildModal } from "./RebuildModal.tsx";
 import type { BookDetail, StepView } from "./types.ts";
 
 interface Estimate {
@@ -54,10 +57,12 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
     (m) => m.id === settings.data?.settings.steps["phase2.chapter"].modelId,
   );
   const state = detail.book.phase2.state;
+  const finished = state === "done" || state === "done_with_errors";
+  const [rebuilding, setRebuilding] = useState(false);
 
-  const start = async (path: string) => {
+  const start = async (path: string, body?: unknown) => {
     try {
-      await post(path);
+      await post(path, body);
       void client.invalidateQueries({ queryKey: ["jobs"] });
     } catch (e) {
       notifications.show({
@@ -69,6 +74,15 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
   };
 
   const list = steps.data?.steps ?? [];
+  const costText = estimate.data
+    ? estimateText({
+        input: estimate.data.inputTokens,
+        cached: estimate.data.cachedTokens,
+        output: estimate.data.outputTokens,
+        pricing: model?.pricing,
+        subscription: onSubscription(settings.data?.settings, model?.id),
+      })
+    : null;
   const reviewChanges =
     steps.data?.review?.outcomes.filter((o) => o.result === "applied").length ?? null;
 
@@ -85,18 +99,42 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
         }
         estimate={
           estimate.data && state === "none"
-            ? `${plural(estimate.data.steps, "chapter")} to read, with about ${estimate.data.referenceTokens.toLocaleString()} tokens of reference knowledge in each request. ${estimateText(
-                {
-                  input: estimate.data.inputTokens,
-                  cached: estimate.data.cachedTokens,
-                  output: estimate.data.outputTokens,
-                  pricing: model?.pricing,
-                },
-              )}`
+            ? `${plural(estimate.data.steps, "chapter")} to read, with about ${estimate.data.referenceTokens.toLocaleString()} tokens of reference knowledge in each request. ${costText}`
             : undefined
         }
-        actionLabel={state === "none" ? "Read the book" : "Read again"}
-        onRun={() => start(`/api/projects/${pid}/books/${bookId}/phase2/run`)}
+        actionLabel={
+          state === "none"
+            ? "Read the book"
+            : finished
+              ? "Run the final review again"
+              : "Continue reading"
+        }
+        onRun={() =>
+          start(
+            `/api/projects/${pid}/books/${bookId}/phase2/run`,
+            finished ? { again: true } : undefined,
+          )
+        }
+        extra={
+          state !== "none" &&
+          !running && (
+            <Button variant="default" onClick={() => setRebuilding(true)}>
+              Read the whole book again
+            </Button>
+          )
+        }
+      >
+        <ModelNote steps={["phase2.chapter", "phase2.review"]} />
+      </RunPanel>
+      <RebuildModal
+        pid={pid}
+        bookId={bookId}
+        opened={rebuilding}
+        costText={costText}
+        onClose={() => setRebuilding(false)}
+        onConfirm={(dropOwn) =>
+          start(`/api/projects/${pid}/books/${bookId}/phase2/rebuild`, { dropOwn })
+        }
       />
       <Section
         title="Chapters"
@@ -194,7 +232,7 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
                           onClick={() => {
                             if (
                               window.confirm(
-                                `Read the book again from "${displayTitle(s.title)}"? Later chapters are read again; your own edits are kept.`,
+                                `Read the book again from "${displayTitle(s.title)}"? That chapter and the later ones are read anew, with fresh answers from the models; your own changes are kept.`,
                               )
                             ) {
                               void start(

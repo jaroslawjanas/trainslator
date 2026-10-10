@@ -115,8 +115,8 @@ export function SettingsPage() {
                       <Text size="sm" c="dimmed">
                         {presets[c.kind].label} at <span className="mono">{c.baseUrl}</span>, using{" "}
                         {keyText(c)}
-                        {c.stream ? "" : ", without streaming"}
-                        {c.maxParallel ? `, at most ${c.maxParallel} requests at a time` : ""}.
+                        {c.stream ? "" : ", without streaming"}, at most {c.maxParallel} requests at
+                        a time.
                       </Text>
                     </Box>
                     <Group gap="xs">
@@ -159,7 +159,6 @@ export function SettingsPage() {
                             <Table.Th>Model</Table.Th>
                             <Table.Th ta="right">Context</Table.Th>
                             <Table.Th ta="right">Output limit</Table.Th>
-                            <Table.Th ta="right">At a time</Table.Th>
                             <Table.Th>Structured output</Table.Th>
                             <Table.Th>Reasoning</Table.Th>
                             <Table.Th />
@@ -178,7 +177,6 @@ export function SettingsPage() {
                               </Table.Td>
                               <Table.Td ta="right">{m.contextWindow.toLocaleString()}</Table.Td>
                               <Table.Td ta="right">{m.maxOutputTokens.toLocaleString()}</Table.Td>
-                              <Table.Td ta="right">{m.maxParallel}</Table.Td>
                               <Table.Td>{STRUCTURED_TEXT[m.structuredOutput]}</Table.Td>
                               <Table.Td>{m.reasoningMode.replaceAll("_", " ")}</Table.Td>
                               <Table.Td>

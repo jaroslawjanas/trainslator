@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Alignment } from "../shared/schemas/alignment.ts";
+import type { Job } from "../shared/schemas/jobs.ts";
 import type { Kb } from "../shared/schemas/kb.ts";
 import { sampleNovel, sampleNovelTranslation } from "../testing/epub-fixtures.ts";
-import { type FakeServer, startFakeOpenAI } from "../testing/fake-openai.ts";
+import { type FakeHandler, type FakeServer, startFakeOpenAI } from "../testing/fake-openai.ts";
 import { makeConnection, makeModel } from "../testing/llm-fixtures.ts";
 import { makeTestServer, type TestServer } from "../testing/server.ts";
 
@@ -95,11 +96,15 @@ function fakePhase1(body: Record<string, unknown>) {
   return { status: 400, errorMessage: "unexpected request" };
 }
 
-async function setup(): Promise<{ pid: string; pairId: string }> {
-  fake = await startFakeOpenAI(fakePhase1);
+async function setup(
+  handler: FakeHandler = fakePhase1,
+  model: Parameters<typeof makeModel>[1] = {},
+  connection: Parameters<typeof makeConnection>[1] = {},
+): Promise<{ pid: string; pairId: string }> {
+  fake = await startFakeOpenAI(handler);
   srv = await makeTestServer();
-  await srv.json("PUT", "/api/settings/connections/conn1", makeConnection(fake.url));
-  await srv.json("PUT", "/api/settings/models/model1", makeModel("openai"));
+  await srv.json("PUT", "/api/settings/connections/conn1", makeConnection(fake.url, connection));
+  await srv.json("PUT", "/api/settings/models/model1", makeModel("openai", model));
   const steps = srv.ctx.settings.get().steps;
   const all = Object.fromEntries(
     Object.entries(steps).map(([k, v]) => [k, { ...v, modelId: "model1" }]),
@@ -132,12 +137,16 @@ async function setup(): Promise<{ pid: string; pairId: string }> {
   return { pid: project.id, pairId: pair.id };
 }
 
-async function runPhase1(pid: string, pairId: string) {
+async function startPhase1(pid: string, pairId: string) {
   const { job } = await srv!.json<{ job: { id: string } }>(
     "POST",
     `/api/projects/${pid}/pairs/${pairId}/phase1/run`,
   );
-  const done = await srv!.ctx.runner.wait(job.id);
+  return srv!.ctx.runner.wait(job.id);
+}
+
+async function runPhase1(pid: string, pairId: string) {
+  const done = await startPhase1(pid, pairId);
   expect(done?.error ?? null).toBeNull();
   expect(done?.status).toBe("done");
   return (await srv!.json<{ kb: Kb }>("GET", `/api/projects/${pid}/pairs/${pairId}/kb`)).kb;
@@ -187,6 +196,105 @@ describe("phase 1", () => {
     expect(newRequests.some((t) => t.includes("You study how a professional translator"))).toBe(
       false,
     );
+  });
+
+  it("reports its stages, each chapter's findings and every request it made", async () => {
+    const { pid, pairId } = await setup();
+    await runPhase1(pid, pairId);
+    const { jobs } = await srv!.json<{ jobs: Job[] }>("GET", `/api/jobs?projectId=${pid}`);
+    const job = jobs.find((j) => j.type === "phase1")!;
+    expect(job.progress.stages.map((st) => [st.key, st.state])).toEqual([
+      ["read", "done"],
+      ["merge", "done"],
+      ["style", "done"],
+      ["save", "done"],
+    ]);
+    const read = job.progress.stages[0]!;
+    expect(read.done).toBe(read.total);
+
+    const { chapters } = await srv!.json<{
+      chapters: { position: number; read: boolean; findings: number; source: string[] }[];
+    }>("GET", `/api/projects/${pid}/pairs/${pairId}/phase1/chapters`);
+    expect(chapters.length).toBe(read.total);
+    expect(chapters.every((c) => c.read)).toBe(true);
+    const withHeron = [];
+    for (const c of chapters) {
+      const { findings } = await srv!.json<{ findings: { source: string }[] }>(
+        "GET",
+        `/api/projects/${pid}/pairs/${pairId}/phase1/chapters/${c.position}`,
+      );
+      expect(findings).toHaveLength(c.findings);
+      if (findings.some((x) => x.source === "Gray Heron")) withHeron.push(c.position);
+    }
+    expect(withHeron.length).toBeGreaterThan(0);
+
+    const activity = await srv!.json<{
+      active: unknown[];
+      finished: { label: string; error: string | null }[];
+    }>("GET", `/api/jobs/${job.id}/activity`);
+    expect(activity.active).toEqual([]);
+    expect(activity.finished).toHaveLength(fake!.requests.length);
+    expect(activity.finished.filter((c) => c.label.startsWith("read "))).toHaveLength(read.total);
+    expect(activity.finished.every((c) => c.error === null)).toBe(true);
+  });
+
+  it("stops at the first wrong-address error instead of trying every chapter", async () => {
+    const { pid, pairId } = await setup(
+      () => ({ status: 405, errorMessage: "Method Not Allowed" }),
+      {},
+      { maxParallel: 1 },
+    );
+    const done = await startPhase1(pid, pairId);
+    expect(done?.status).toBe("failed");
+    expect(done?.error).toContain("405");
+    expect(fake!.requests).toHaveLength(1);
+  });
+
+  it("shows a cancelled run as stopped, not running", async () => {
+    const { pid, pairId } = await setup((body) => ({ ...fakePhase1(body), delayMs: 2000 }));
+    const { job } = await srv!.json<{ job: { id: string } }>(
+      "POST",
+      `/api/projects/${pid}/pairs/${pairId}/phase1/run`,
+    );
+    const pairState = async () =>
+      (
+        await srv!.json<{ pair: { phase1: { state: string } } }>(
+          "GET",
+          `/api/projects/${pid}/pairs/${pairId}`,
+        )
+      ).pair.phase1.state;
+    for (let i = 0; i < 100 && fake!.requests.length === 0; i++)
+      await new Promise((r) => setTimeout(r, 10));
+    expect(await pairState()).toBe("running");
+    await srv!.json("POST", `/api/jobs/${job.id}/cancel`);
+    expect((await srv!.ctx.runner.wait(job.id))?.status).toBe("cancelled");
+    expect(await pairState()).toBe("stopped");
+    const { pairs } = await srv!.json<{ pairs: { phase1: { state: string } }[] }>(
+      "GET",
+      `/api/projects/${pid}`,
+    );
+    expect(pairs[0]!.phase1.state).toBe("stopped");
+  });
+
+  it("counts usage again from zero after a reset, keeping the call log", async () => {
+    const { pid, pairId } = await setup();
+    type UsageView = { since: string | null; total: { calls: number }; recent: unknown[] };
+    const usage = () => srv!.json<UsageView>("GET", `/api/usage/${pid}`);
+    await runPhase1(pid, pairId);
+    const before = await usage();
+    expect(before.since).toBeNull();
+    expect(before.total.calls).toBe(fake!.requests.length);
+
+    await srv!.json("POST", `/api/usage/${pid}/reset`);
+    const after = await usage();
+    expect(after.since).not.toBeNull();
+    expect(after.total.calls).toBe(0);
+    expect(after.recent).toEqual([]);
+    expect(await srv!.ctx.rt.log.read(pid)).toHaveLength(fake!.requests.length);
+
+    const sent = fake!.requests.length;
+    await runPhase1(pid, pairId);
+    expect((await usage()).total.calls).toBe(fake!.requests.length - sent);
   });
 
   it("refuses to start before the alignment is confirmed", async () => {

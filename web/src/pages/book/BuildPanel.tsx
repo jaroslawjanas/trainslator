@@ -1,8 +1,20 @@
-import { Alert, Box, Button, Checkbox, Code, Group, List, Stack, Text } from "@mantine/core";
+import {
+  Alert,
+  Anchor,
+  Box,
+  Button,
+  Checkbox,
+  Code,
+  Group,
+  List,
+  Stack,
+  Text,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconAlertCircle, IconCheck, IconDownload } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Link } from "react-router";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
 import { Section } from "../../components/PageHeader.tsx";
@@ -56,9 +68,15 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
         finishedAt={detail.book.build.builtAt}
         job={job}
         summary={
-          built && detail.book.build.fileName
-            ? `Saved as ${detail.book.build.fileName}.`
-            : undefined
+          built && detail.book.build.fileName ? (
+            <>
+              Saved as {detail.book.build.fileName}. Every build is kept in{" "}
+              <Anchor component={Link} to={`/projects/${pid}/books/${bookId}/history`} size="sm">
+                History
+              </Anchor>
+              .
+            </>
+          ) : undefined
         }
         actionLabel={built ? "Build again" : "Build the EPUB"}
         onRun={async () => {

@@ -9,6 +9,7 @@ import {
   makeStep,
   type TestRuntime,
 } from "../testing/llm-fixtures.ts";
+import { jobScope } from "./activity.ts";
 import { type CallSpec, callStructured } from "./call.ts";
 import { LlmError } from "./errors.ts";
 
@@ -159,6 +160,12 @@ describe("callStructured", () => {
     expect(server!.requests).toHaveLength(1);
   });
 
+  it("stops at once on 405, which means a wrong address (e.g. http instead of https)", async () => {
+    await setup(() => ({ status: 405, errorMessage: "Method Not Allowed" }));
+    await expect(call()).rejects.toMatchObject({ kind: "config" });
+    expect(server!.requests).toHaveLength(1);
+  });
+
   it("gives up after two repair turns", async () => {
     await setup(() => ({ content: "no json here" }));
     await expect(call()).rejects.toMatchObject({ kind: "invalid_output" });
@@ -171,7 +178,7 @@ describe("callStructured", () => {
     expect(server!.requests).toHaveLength(2);
   });
 
-  it("raises the limit once when reasoning used up the output, then gives up", async () => {
+  it("retries once at the model's full limit when reasoning used up the output, then gives up", async () => {
     await setup(() => ({
       content: "",
       finishReason: "length",
@@ -183,9 +190,15 @@ describe("callStructured", () => {
     }));
     await expect(call()).rejects.toMatchObject({ kind: "reasoning_exhausted" });
     expect(server!.requests).toHaveLength(2);
-    expect(Number(server!.requests[1]!.max_completion_tokens)).toBeGreaterThan(
-      Number(server!.requests[0]!.max_completion_tokens),
-    );
+    expect(Number(server!.requests[0]!.max_completion_tokens)).toBe(500);
+    expect(Number(server!.requests[1]!.max_completion_tokens)).toBe(8000);
+  });
+
+  it("doesn't retry a reasoning cut-off that already had the full limit", async () => {
+    await setup(() => ({ content: "", finishReason: "length" }), {}, { maxOutputTokens: 600 });
+    const step = makeStep({ reasoning: { enabled: true, effort: "medium", budgetTokens: null } });
+    await expect(call(spec(), step)).rejects.toMatchObject({ kind: "reasoning_exhausted" });
+    expect(server!.requests).toHaveLength(1);
   });
 
   it("reports a cut-off answer as truncated", async () => {
@@ -233,8 +246,8 @@ describe("callStructured", () => {
     expect(server!.requests).toHaveLength(1);
   });
 
-  it("keeps parallel requests within the model's limit", async () => {
-    await setup(() => ({ content: VALID, delayMs: 60 }), {}, { maxParallel: 2 });
+  it("keeps parallel requests within the connection's limit", async () => {
+    await setup(() => ({ content: VALID, delayMs: 60 }), { maxParallel: 2 });
     await Promise.all(Array.from({ length: 6 }, () => call()));
     expect(server!.maxConcurrent).toBe(2);
   });
@@ -253,6 +266,26 @@ describe("callStructured", () => {
     const pending = call(spec({ signal: controller.signal }));
     setTimeout(() => controller.abort(), 50);
     await expect(pending).rejects.toMatchObject({ kind: "aborted" });
+  });
+
+  it("shows a job's request while it streams and files it under the job when done", async () => {
+    await setup(() => ({ content: VALID, chunkDelayMs: 40 }), { stream: true });
+    const activity = env!.rt.activity;
+    const pending = jobScope.run({ jobId: "job_1" }, () => call());
+    let seen: ReturnType<typeof activity.activeFor> = [];
+    for (let i = 0; i < 100 && !seen[0]?.receivedTokens; i++) {
+      await new Promise((r) => setTimeout(r, 10));
+      seen = activity.activeFor("job_1");
+    }
+    expect(seen[0]).toMatchObject({ label: "test", modelName: "fake-model", attempt: 1 });
+    expect(seen[0]!.sentAt).not.toBeNull();
+    expect(seen[0]!.receivedTokens).toBeGreaterThan(0);
+    expect(activity.activeFor("job_2")).toEqual([]);
+    await pending;
+    expect(activity.activeFor("job_1")).toEqual([]);
+    expect(activity.finishedFor("job_1")).toHaveLength(1);
+    const [entry] = await env!.rt.log.read("pr_test");
+    expect(entry).toMatchObject({ jobId: "job_1", label: "test" });
   });
 
   it("logs each request with usage", async () => {

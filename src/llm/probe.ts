@@ -6,8 +6,10 @@ import {
   type Pricing,
   protocolOf,
 } from "../shared/schemas/settings.ts";
+import { ADVISOR_TOOL, advisorTool } from "./advisor.ts";
 import { listAnthropicModels } from "./anthropic.ts";
 import { classifyError, type LlmRuntime, send } from "./call.ts";
+import { CLAUDE_CODE_MODELS } from "./claude-code.ts";
 import { LlmError } from "./errors.ts";
 import { listOllamaModels } from "./ollama.ts";
 import { buildRequestBody, type RequestPlan } from "./request.ts";
@@ -62,6 +64,13 @@ const ProbeSchema = z.object({
   ),
 });
 
+/**
+ * Room for thinking on top of the small answer: many models reason even when
+ * asked not to, and without room their answer is cut off and looks like
+ * broken JSON.
+ */
+const REASONING_ROOM = 4000;
+
 function plan(text: string, answerBudget = 400): RequestPlan {
   return {
     blocks: [
@@ -75,8 +84,8 @@ function plan(text: string, answerBudget = 400): RequestPlan {
     schemaName: "probe",
     jsonSchema: toStrictJsonSchema(ProbeSchema),
     answerBudget,
-    reasoningAllowance: 0,
-    repair: [],
+    reasoningAllowance: REASONING_ROOM,
+    turns: [],
     promptCacheKey: null,
   };
 }
@@ -95,6 +104,14 @@ export async function listModels(rt: LlmRuntime, connection: Connection): Promis
     const models = await listAnthropicModels(rt.clients.anthropic(connection));
     return models.sort((a, b) => a.id.localeCompare(b.id));
   }
+  if (protocol === "claude_code")
+    return CLAUDE_CODE_MODELS.map((id) => ({
+      id,
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      // Claude Code reports each request's cost itself.
+      pricing: null,
+    }));
   if (protocol === "ollama") {
     const names = await listOllamaModels(connection);
     return names
@@ -260,6 +277,12 @@ export async function testModel(
       ok: true,
       detail: `Valid JSON in "${current.structuredOutput}" mode.`,
     });
+  } else if (basic.raw.finishReason === "length") {
+    checks.push({
+      name: "Structured output",
+      ok: null,
+      detail: `The answer was cut off at the output limit (${basic.raw.usage?.completionTokens ?? "?"} tokens) before the JSON was complete, so it couldn't be checked. The model probably spent the room on reasoning; check the model's Max output.`,
+    });
   } else if (anyObject && !("zq_probe_ok" in anyObject) && current.structuredOutput !== "none") {
     suggestions.structuredOutput = "none";
     checks.push({
@@ -315,7 +338,40 @@ export async function testModel(
     }
   }
 
-  // 3. Deep checks: long prompt (silent truncation) and caching.
+  // 3. Tool calls: a step's model needs them to consult the advisor.
+  if (protocolOf(conn.kind) === "claude_code") {
+    checks.push({
+      name: "Tool calls",
+      ok: null,
+      detail:
+        "Claude Code can't be given Trainslator's tools, so as a step's model it can't ask the advisor. It can be the advisor.",
+    });
+  } else {
+    try {
+      const r = await attempt(current, {
+        ...plan(
+          `Before answering, ask the advisor with the ${ADVISOR_TOOL} tool whether the name "Mira" should be translated. Then ${TASK}`,
+        ),
+        tools: [advisorTool(1)],
+      });
+      const called = r.raw.toolCalls?.some((t) => t.name === ADVISOR_TOOL) ?? false;
+      checks.push({
+        name: "Tool calls",
+        ok: called,
+        detail: called
+          ? "Called the tool when asked, so it can consult the advisor."
+          : "Didn't call the tool when asked. As a step's model it won't consult the advisor.",
+      });
+    } catch (error) {
+      checks.push({
+        name: "Tool calls",
+        ok: false,
+        detail: `Tools were rejected, so it can't consult the advisor: ${(error as Error).message}`,
+      });
+    }
+  }
+
+  // 4. Deep checks: long prompt (silent truncation) and caching.
   if (options.deep) {
     const target = Math.min(Math.floor(current.contextWindow * 0.6), 24_000);
     const filler = Array.from(

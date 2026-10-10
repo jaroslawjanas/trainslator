@@ -1,6 +1,13 @@
+import { jobScope } from "../llm/activity.ts";
 import { isLlmError } from "../llm/errors.ts";
 import { addUsage, emptyUsage, newId, nowIso, type Usage } from "../shared/schemas/common.ts";
-import { ACTIVE_JOB_STATUSES, Job, type JobStatus, type JobType } from "../shared/schemas/jobs.ts";
+import {
+  ACTIVE_JOB_STATUSES,
+  Job,
+  type JobStage,
+  type JobStatus,
+  type JobType,
+} from "../shared/schemas/jobs.ts";
 import { listDir, readJson, writeJson } from "../store/json.ts";
 import type { DataPaths } from "../store/paths.ts";
 import type { EventBus } from "./events.ts";
@@ -24,8 +31,15 @@ export interface JobContext {
   addUsage(usage: Usage): void;
   /** Counts an item that failed without stopping the job. */
   itemError(): void;
+  /** Shows a message as the current progress label and keeps it in the job's notes. */
   log(message: string): void;
+  /** Declares the job's stages, in order; they all start as "waiting". */
+  stages(list: { key: string; label: string; total?: number }[]): void;
+  /** Updates one stage (counts, state). */
+  stage(key: string, patch: Partial<Pick<JobStage, "done" | "total" | "state" | "label">>): void;
 }
+
+const MAX_NOTES = 60;
 
 export type JobHandler = (ctx: JobContext) => Promise<void>;
 
@@ -115,7 +129,8 @@ export class JobRunner {
       targetKind: args.targetKind,
       targetId: args.targetId,
       status: "queued",
-      progress: { done: 0, total: 0, label: args.label ?? "Waiting to start" },
+      progress: { done: 0, total: 0, label: args.label ?? "Waiting to start", stages: [] },
+      notes: [],
       error: null,
       itemErrors: 0,
       usage: emptyUsage(),
@@ -193,7 +208,7 @@ export class JobRunner {
         if (run.pause) throw new PauseSignal();
       },
       progress: (done, total, label) => {
-        job.progress = { done, total, label };
+        job.progress = { ...job.progress, done, total, label };
         void this.persist(job);
       },
       addUsage: (usage) => {
@@ -206,6 +221,31 @@ export class JobRunner {
       },
       log: (message) => {
         job.progress = { ...job.progress, label: message };
+        job.notes = [...job.notes, { at: nowIso(), message }].slice(-MAX_NOTES);
+        void this.persist(job);
+      },
+      stages: (list) => {
+        job.progress = {
+          ...job.progress,
+          stages: list.map((st) => {
+            // On resume, keep what earlier runs counted for the same stage.
+            const old = job.progress.stages.find((o) => o.key === st.key);
+            return {
+              key: st.key,
+              label: st.label,
+              done: old?.state === "done" ? old.done : 0,
+              total: st.total ?? old?.total ?? 0,
+              state: old?.state === "done" ? "done" : "waiting",
+            };
+          }),
+        };
+        void this.persist(job);
+      },
+      stage: (key, patch) => {
+        job.progress = {
+          ...job.progress,
+          stages: job.progress.stages.map((st) => (st.key === key ? { ...st, ...patch } : st)),
+        };
         void this.persist(job);
       },
     };
@@ -217,7 +257,8 @@ export class JobRunner {
       let status: JobStatus = "done";
       try {
         if (!handler) throw new Error(`No handler for ${job.type} jobs.`);
-        await handler(ctx);
+        // AI requests made inside the handler are tagged with this job.
+        await jobScope.run({ jobId: job.id }, () => handler(ctx));
         status = job.itemErrors > 0 ? "done_with_errors" : "done";
       } catch (error) {
         if (error instanceof PauseSignal) status = "paused";

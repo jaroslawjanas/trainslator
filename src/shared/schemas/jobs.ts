@@ -27,6 +27,16 @@ export type JobStatus = z.infer<typeof JobStatus>;
 export const ACTIVE_JOB_STATUSES: readonly JobStatus[] = ["queued", "running", "pausing"];
 export const RESUMABLE_JOB_STATUSES: readonly JobStatus[] = ["paused", "interrupted", "failed"];
 
+/** A named part of a job, e.g. "Reading chapter pairs: 12 of 61". */
+export const JobStage = z.object({
+  key: z.string(),
+  label: z.string(),
+  done: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
+  state: z.enum(["waiting", "running", "done", "skipped"]),
+});
+export type JobStage = z.infer<typeof JobStage>;
+
 export const Job = z.object({
   schemaVersion: SchemaVersion,
   id: Id,
@@ -39,7 +49,10 @@ export const Job = z.object({
     done: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
     label: z.string(),
+    stages: z.array(JobStage).default([]),
   }),
+  /** Recent messages from the job (retries, splits, skipped items), newest last. */
+  notes: z.array(z.object({ at: IsoDate, message: z.string() })).default([]),
   error: z.string().nullable(),
   /** Items that failed or were refused without stopping the job. */
   itemErrors: z.number().int().nonnegative(),

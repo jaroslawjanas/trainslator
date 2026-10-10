@@ -1,7 +1,7 @@
 import type { Connection } from "../shared/schemas/settings.ts";
 import { longFetch, resolveApiKey, rootUrl } from "./client.ts";
-import { LlmError } from "./errors.ts";
-import type { RawResult } from "./response.ts";
+import { isLlmError, LlmError, wrongAddressError } from "./errors.ts";
+import type { RawResult, ToolCall } from "./response.ts";
 import type { Watch } from "./watch.ts";
 
 /**
@@ -28,8 +28,8 @@ function errorFor(status: number, message: string): LlmError {
   if (status === 401 || status === 403)
     return new LlmError("auth", `${text} (check the API key)`, { status });
   if (status === 429) return new LlmError("rate_limit", text, { status });
-  if (status === 400 || status === 404 || status === 405 || status === 422)
-    return new LlmError("bad_request", text, { status });
+  if (status === 404 || status === 405) return wrongAddressError(status, text);
+  if (status === 400 || status === 422) return new LlmError("bad_request", text, { status });
   return new LlmError("transport", text, { status });
 }
 
@@ -76,51 +76,108 @@ function finishReason(done: unknown): string | null {
 function usageOf(last: Dict): RawResult["usage"] {
   if (typeof last.prompt_eval_count !== "number" && typeof last.eval_count !== "number")
     return null;
+  const prompt = typeof last.prompt_eval_count === "number" ? last.prompt_eval_count : 0;
+  // Prompt tokens read from Ollama's cache, part of prompt_eval_count.
+  const cached =
+    typeof last.prompt_eval_cached_count === "number" ? last.prompt_eval_cached_count : 0;
   return {
-    promptTokens: typeof last.prompt_eval_count === "number" ? last.prompt_eval_count : 0,
+    promptTokens: Math.max(prompt, cached),
     completionTokens: typeof last.eval_count === "number" ? last.eval_count : 0,
     reasoningTokens: 0,
-    cachedTokens: 0,
+    cachedTokens: cached,
     cacheWriteTokens: 0,
     cost: null,
   };
 }
 
-function message(chunk: Dict): { content: string; thinking: string } {
+function message(chunk: Dict): { content: string; thinking: string; toolCalls: Dict[] } {
   const m = (chunk.message ?? {}) as Dict;
   return {
     content: typeof m.content === "string" ? m.content : "",
     thinking: typeof m.thinking === "string" ? m.thinking : "",
+    toolCalls: Array.isArray(m.tool_calls) ? (m.tool_calls as Dict[]) : [],
   };
 }
+
+/**
+ * Ollama gives tool arguments as an object and may leave out ids. The
+ * message sent back keeps Ollama's own shape.
+ */
+function withTools(result: RawResult, raw: Dict[]): RawResult {
+  if (raw.length === 0) return result;
+  const toolCalls: ToolCall[] = raw.map((call, i) => {
+    const fn = (call.function ?? {}) as Dict;
+    return {
+      id: typeof call.id === "string" && call.id ? call.id : `call_${i}`,
+      name: typeof fn.name === "string" ? fn.name : "",
+      arguments: JSON.stringify(fn.arguments ?? {}),
+    };
+  });
+  return {
+    ...result,
+    toolCalls,
+    finishReason: "tool_calls",
+    replay: {
+      role: "assistant",
+      content: result.content,
+      ...(result.reasoning ? { thinking: result.reasoning } : {}),
+      tool_calls: raw,
+    },
+  };
+}
+
+/** Models that turned down a thinking level; they get plain "thinking on" instead. */
+const withoutThinkLevels = new Set<string>();
 
 export async function sendOllama(
   connection: Connection,
   body: Record<string, unknown>,
   watch: Watch,
+  onText?: (chars: number) => void,
 ): Promise<RawResult> {
   watch.activity();
-  const res = await request(connection, "/api/chat", {
-    method: "POST",
-    body: JSON.stringify(body),
-    signal: watch.signal,
-  });
+  const key = `${connection.id}:${String(body.model)}`;
+  let sent =
+    typeof body.think === "string" && withoutThinkLevels.has(key) ? { ...body, think: true } : body;
+  const post = () =>
+    request(connection, "/api/chat", {
+      method: "POST",
+      body: JSON.stringify(sent),
+      signal: watch.signal,
+    });
+  let res: Response;
+  try {
+    res = await post();
+  } catch (error) {
+    const levelRefused =
+      typeof sent.think === "string" &&
+      isLlmError(error, "bad_request") &&
+      /think/i.test(error.message);
+    if (!levelRefused) throw error;
+    withoutThinkLevels.add(key);
+    sent = { ...sent, think: true };
+    res = await post();
+  }
   if (!body.stream) {
     const chunk = (await res.json()) as Dict;
     const m = message(chunk);
-    return {
-      content: m.content,
-      reasoning: m.thinking,
-      refusal: null,
-      finishReason: finishReason(chunk.done_reason),
-      usage: usageOf(chunk),
-      model: typeof chunk.model === "string" ? chunk.model : null,
-    };
+    return withTools(
+      {
+        content: m.content,
+        reasoning: m.thinking,
+        refusal: null,
+        finishReason: finishReason(chunk.done_reason),
+        usage: usageOf(chunk),
+        model: typeof chunk.model === "string" ? chunk.model : null,
+      },
+      m.toolCalls,
+    );
   }
 
   let content = "";
   let reasoning = "";
   let last: Dict = {};
+  const toolCalls: Dict[] = [];
   let buffer = "";
   const decoder = new TextDecoder();
   const handle = (line: string) => {
@@ -131,6 +188,9 @@ export async function sendOllama(
     const m = message(chunk);
     content += m.content;
     reasoning += m.thinking;
+    toolCalls.push(...m.toolCalls);
+    if (onText && m.content.length + m.thinking.length > 0)
+      onText(m.content.length + m.thinking.length);
     if (chunk.done) last = chunk;
   };
   if (!res.body) throw new LlmError("transport", "Ollama sent an empty response.");
@@ -145,14 +205,17 @@ export async function sendOllama(
     }
   }
   handle(buffer + decoder.decode());
-  return {
-    content,
-    reasoning,
-    refusal: null,
-    finishReason: finishReason(last.done_reason),
-    usage: usageOf(last),
-    model: typeof last.model === "string" ? last.model : null,
-  };
+  return withTools(
+    {
+      content,
+      reasoning,
+      refusal: null,
+      finishReason: finishReason(last.done_reason),
+      usage: usageOf(last),
+      model: typeof last.model === "string" ? last.model : null,
+    },
+    toolCalls,
+  );
 }
 
 /** Model names from /api/tags (installed models locally, available models on Ollama Cloud). */

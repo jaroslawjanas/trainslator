@@ -1,18 +1,22 @@
+import { z } from "zod";
+import type { AdvisorTarget } from "../llm/advisor.ts";
 import type { CallTarget } from "../llm/call.ts";
 import { LlmError } from "../llm/errors.ts";
 import {
+  type AdvisorSettings,
   type Connection,
   defaultSettings,
+  defaultStepSettings,
   MASKED,
   type Model,
   Settings,
   type StepSettings,
 } from "../shared/schemas/settings.ts";
 import { STEP_INFO, type Step } from "../shared/steps.ts";
-import { readJson, withFileLock, writeJson } from "../store/json.ts";
+import { readJson, StoreError, withFileLock, writeJson } from "../store/json.ts";
 import type { DataPaths } from "../store/paths.ts";
 import { UserError } from "./projects.ts";
-import { migrateSettings } from "./settings-migrate.ts";
+import { migrateRawSettings, migrateSettings } from "./settings-migrate.ts";
 
 /** In-memory settings, persisted to settings.json. API keys never leave the server unmasked. */
 export class SettingsService {
@@ -24,9 +28,23 @@ export class SettingsService {
   }
 
   async load(): Promise<void> {
-    this.current = (await readJson(this.paths.settings(), Settings)) ?? defaultSettings();
+    const raw = await readJson(this.paths.settings(), z.unknown());
+    if (raw === undefined) {
+      this.current = defaultSettings();
+      return;
+    }
+    const upgraded = migrateRawSettings(raw);
+    const parsed = Settings.safeParse(upgraded);
+    if (!parsed.success)
+      throw new StoreError(
+        `settings.json doesn't match its schema: ${parsed.error.message}`,
+        this.paths.settings(),
+        { cause: parsed.error },
+      );
+    this.current = parsed.data;
     const migrated = migrateSettings(this.current);
-    if (migrated) await this.save(migrated);
+    if (migrated || JSON.stringify(upgraded) !== JSON.stringify(raw))
+      await this.save(migrated ?? this.current);
   }
 
   get(): Settings {
@@ -90,6 +108,7 @@ export class SettingsService {
       connections: this.current.connections.filter((c) => c.id !== id),
       models,
       steps: clearModels(this.current.steps, removedModels),
+      advisor: clearAdvisor(this.current.advisor, removedModels),
     });
   }
 
@@ -109,11 +128,20 @@ export class SettingsService {
       ...this.current,
       models: this.current.models.filter((m) => m.id !== id),
       steps: clearModels(this.current.steps, new Set([id])),
+      advisor: clearAdvisor(this.current.advisor, new Set([id])),
     });
   }
 
   async setSteps(steps: Settings["steps"]): Promise<Settings> {
     return this.save({ ...this.current, steps });
+  }
+
+  async setAdvisor(advisor: AdvisorSettings): Promise<Settings> {
+    if (advisor.modelId && !this.model(advisor.modelId))
+      throw new UserError("The advisor's model doesn't exist.");
+    if (advisor.enabled && !advisor.modelId)
+      throw new UserError("Choose the advisor's model before turning the advisor on.");
+    return this.save({ ...this.current, advisor });
   }
 
   connection(id: string): Connection | undefined {
@@ -143,8 +171,52 @@ export class SettingsService {
     const connection = this.connection(model.connectionId);
     if (!connection)
       throw new LlmError("config", `The connection of model "${model.label}" no longer exists.`);
-    return { connection, model, step: stepSettings };
+    return {
+      connection,
+      model,
+      step: stepSettings,
+      advisor: this.advisorFor(stepSettings, connection),
+    };
   }
+
+  /**
+   * The advisor a step may consult, or null when the advisor is off, the
+   * step may not, or its model can't call tools (Claude Code).
+   */
+  private advisorFor(step: StepSettings, asking: Connection): AdvisorTarget | null {
+    const a = this.current.advisor;
+    if (!a.enabled || !step.consultAdvisor || asking.kind === "claude_code") return null;
+    const model = a.modelId ? this.model(a.modelId) : undefined;
+    if (!model)
+      throw new LlmError(
+        "config",
+        "The advisor is on, but its model isn't set. Choose one in Settings → Step defaults.",
+      );
+    const connection = this.connection(model.connectionId);
+    if (!connection)
+      throw new LlmError(
+        "config",
+        `The connection of the advisor "${model.label}" no longer exists.`,
+      );
+    return {
+      connection,
+      model,
+      step: {
+        ...defaultStepSettings(),
+        modelId: model.id,
+        reasoning: a.reasoning,
+        maxOutputTokens: a.maxOutputTokens,
+      },
+      maxConsultations: a.maxConsultations,
+    };
+  }
+}
+
+/** A removed advisor model switches the advisor off. */
+function clearAdvisor(advisor: AdvisorSettings, removed: Set<string>): AdvisorSettings {
+  return advisor.modelId && removed.has(advisor.modelId)
+    ? { ...advisor, modelId: null, enabled: false }
+    : advisor;
 }
 
 function clearModels(steps: Settings["steps"], removed: Set<string>): Settings["steps"] {

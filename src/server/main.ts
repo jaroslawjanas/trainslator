@@ -15,21 +15,29 @@ const webPort = Number(process.env.WEB_PORT ?? 5173);
 
 const ctx = await createContext({ dataDir, port, devPorts: [webPort], handlers: jobHandlers });
 
+// Under pnpm dev the pages come from Vite, which has the current code; a
+// build left in dist/web would be out of date, so it isn't served then.
+const dev = process.argv.includes("--dev");
 const webDir = path.resolve("dist", "web");
 let staticDir: string | undefined;
 try {
-  await fs.access(path.join(webDir, "index.html"));
-  staticDir = webDir;
+  if (!dev) {
+    await fs.access(path.join(webDir, "index.html"));
+    staticDir = webDir;
+  }
 } catch {
   staticDir = undefined;
 }
 
-const app = createApp(ctx, { staticDir });
+const app = createApp(ctx, { staticDir, devWebPort: dev ? webPort : undefined });
 
 serve({ fetch: app.fetch, port, hostname }, (info) => {
-  console.log(
-    `Trainslator server: http://${hostname}:${info.port}${staticDir ? "" : " (API only; run the web UI with pnpm dev)"}`,
-  );
+  const note = dev
+    ? ` (API; open the app at http://localhost:${webPort})`
+    : staticDir
+      ? ""
+      : " (API only; run the web UI with pnpm dev)";
+  console.log(`Trainslator server: http://${hostname}:${info.port}${note}`);
   console.log(`Data folder: ${dataDir}`);
 });
 

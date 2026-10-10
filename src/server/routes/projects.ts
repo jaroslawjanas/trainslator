@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { liveBook } from "../../services/books.ts";
+import { livePair } from "../../services/pairs.ts";
 import { COMMON_LANGUAGES, languageDisplayName } from "../../shared/languages.ts";
 import type { AppContext } from "../context.ts";
 import { HttpError, idParam, jsonBody } from "../http.ts";
@@ -37,8 +39,8 @@ export function projectRoutes(app: AppContext): Hono {
     const project = await app.projects.get(pid);
     return c.json({
       project,
-      pairs: await app.projects.pairs(pid),
-      books: await app.projects.books(pid),
+      pairs: (await app.projects.pairs(pid)).map((p) => livePair(app, p)),
+      books: (await app.projects.books(pid)).map((b) => liveBook(app, b)),
       languageNotes: await app.projects.languageNotes(pid),
       jobs: app.runner.list(pid).slice(0, 50),
     });

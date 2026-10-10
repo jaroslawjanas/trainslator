@@ -52,7 +52,7 @@ export async function loadAllUnits(
   return units;
 }
 
-async function loadEdits(app: AppContext, pid: string, bookId: string) {
+export async function loadEdits(app: AppContext, pid: string, bookId: string) {
   return (
     (await readJson(app.paths.phase3Edits(pid, bookId), ManualEdits).catch(() => undefined))
       ?.edits ?? {}
@@ -144,8 +144,8 @@ async function unitAndScripts(app: AppContext, pid: string, bookId: string, key:
   return { unit, scripts: unicodeScriptsFor(project.targetScript) };
 }
 
-/** Saves your own translation of a unit; placeholders must be valid. */
-export async function saveManualEdit(
+/** Throws when a translation you wrote can't be used (broken or missing placeholders). */
+export async function checkOwnText(
   app: AppContext,
   pid: string,
   bookId: string,
@@ -158,6 +158,17 @@ export async function saveManualEdit(
     (e) => !e.startsWith("contains Markdown") && !e.startsWith("is wrapped in quotation"),
   );
   if (blocking.length > 0) throw new UserError(`The text can't be used: ${blocking.join("; ")}.`);
+}
+
+/** Saves your own translation of a unit; placeholders must be valid. */
+export async function saveManualEdit(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  key: string,
+  text: string,
+): Promise<void> {
+  await checkOwnText(app, pid, bookId, key, text);
   const results = await loadResults(app.paths, pid, bookId);
   const previous =
     [...results.values()].flatMap((r) => r.units).find((u) => u.key === key)?.text ?? null;

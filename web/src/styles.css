@@ -409,6 +409,88 @@ a.tr-context:hover {
   color: var(--tr-blue);
 }
 
+/* Review: versions side by side, one grid row per passage. */
+.tr-cmp-head,
+.tr-cmp-row {
+  display: grid;
+  grid-template-columns: repeat(var(--tr-cols, 2), minmax(0, 1fr));
+  column-gap: 28px;
+}
+
+.tr-cmp-head {
+  font-size: var(--mantine-font-size-sm);
+  color: var(--tr-graphite);
+  padding-bottom: 8px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid var(--tr-rule);
+}
+
+.tr-cmp-cell {
+  position: relative;
+  min-width: 0;
+  padding-right: 30px;
+}
+
+/* Rows where the versions differ: a mark beside each version. */
+.tr-cmp-row[data-differs] .tr-cmp-cell[data-kind="version"] {
+  box-shadow: inset 2px 0 0 var(--tr-ochre);
+  padding-left: 12px;
+}
+
+.tr-cmp-label {
+  display: none;
+  font-size: var(--mantine-font-size-xs);
+  color: var(--tr-faint);
+  margin-bottom: 2px;
+}
+
+.tr-cmp-actions {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tr-cmp-cell:hover .tr-cmp-actions,
+.tr-cmp-cell:focus-within .tr-cmp-actions {
+  opacity: 1;
+}
+
+@media (max-width: 48em) {
+  .tr-cmp-head {
+    display: none;
+  }
+  .tr-cmp-row {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+  .tr-cmp-label {
+    display: block;
+  }
+  .tr-cmp-cell {
+    padding-right: 0;
+  }
+  .tr-cmp-actions {
+    position: static;
+    flex-direction: row;
+    opacity: 1;
+  }
+}
+
+.tr-history-entry {
+  padding: 18px 0;
+  border-top: 1px solid var(--tr-rule);
+}
+
+.tr-history-entry:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
 .tr-pending {
   font-family: var(--tr-serif);
   font-style: italic;

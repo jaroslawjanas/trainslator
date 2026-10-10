@@ -30,7 +30,6 @@ export function emptyModel(connection: Connection, preset: KindPreset): Model {
     label: "",
     contextWindow: preset.limits.contextWindow,
     maxOutputTokens: preset.limits.maxOutputTokens,
-    maxParallel: 4,
     pricing: null,
     ...preset.model,
   };
@@ -135,14 +134,6 @@ export function ModelModal({
             thousandSeparator=","
             value={m.maxOutputTokens}
             onChange={(v) => set({ maxOutputTokens: Number(v) || 4000 })}
-          />
-          <NumberInput
-            label="Max parallel requests"
-            description="Your provider's rate limit."
-            min={1}
-            max={64}
-            value={m.maxParallel}
-            onChange={(v) => set({ maxParallel: Number(v) || 1 })}
           />
         </Group>
         <Divider label="How the API behaves" labelPosition="left" />

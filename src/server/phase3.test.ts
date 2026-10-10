@@ -111,6 +111,43 @@ describe("translation through the app", () => {
     expect(ch1).toContain('<span class="dropcap">M</span>IRA CLIMBED');
   });
 
+  it("translates whole chapters when the book is switched to them", async () => {
+    const { pid, bookId } = await setup();
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    const { book } = await srv!.json<{ book: { translationMode: string } }>("PATCH", base, {
+      translationMode: "chapters",
+    });
+    expect(book.translationMode).toBe("chapters");
+    const est = await srv!.json<{ mode: string; chunks: number; remainingChapters: number }>(
+      "GET",
+      `${base}/phase3/estimate`,
+    );
+    expect(est).toMatchObject({ mode: "chapters", chunks: est.remainingChapters });
+    const job = await runJob(`${base}/phase3/run`);
+    expect(job.progress.stages[0]?.label).toBe("Translating chapters");
+    const overview = await srv!.json<{ chapters: { pending: number }[] }>(
+      "GET",
+      `${base}/chapters`,
+    );
+    expect(overview.chapters.every((c) => c.pending === 0)).toBe(true);
+  });
+
+  it("keeps the translation when switching to whole chapters after a run", async () => {
+    const { pid, bookId } = await setup();
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    await runJob(`${base}/phase3/run`);
+    const sent = fake!.requests.length;
+    await srv!.json("PATCH", base, { translationMode: "chapters" });
+    const overview = await srv!.json<{ chapters: { chunks: number; pending: number }[] }>(
+      "GET",
+      `${base}/chapters`,
+    );
+    expect(overview.chapters.every((c) => c.chunks === 1 && c.pending === 0)).toBe(true);
+    const est = await srv!.json<{ remaining: number }>("GET", `${base}/phase3/estimate`);
+    expect(est.remaining).toBe(0);
+    expect(fake!.requests.length).toBe(sent);
+  });
+
   it("re-translates one unit with an instruction", async () => {
     const { pid, bookId } = await setup();
     const base = `/api/projects/${pid}/books/${bookId}`;

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { stripPlaceholders } from "../epub/blocks.ts";
 import { EpubBook } from "../epub/book.ts";
 import { buildSegments } from "../epub/segments.ts";
 import { readZip } from "../epub/zip.ts";
@@ -57,6 +58,13 @@ async function setup(handler: FakeHandler, chunkTokens = 120): Promise<Phase3Env
   };
 }
 
+/** The text of a request's messages, as the model reads it. */
+function promptText(body: Record<string, unknown>): string {
+  return (body.messages as { content: string | { text: string }[] }[])
+    .map((m) => (typeof m.content === "string" ? m.content : m.content.map((p) => p.text).join("")))
+    .join("\n");
+}
+
 async function translatedFile(e: Phase3Env, name: string, useBest = false): Promise<string> {
   const { file } = await buildBook({
     paths: e.paths,
@@ -88,6 +96,22 @@ describe("phase 3", () => {
     expect(ch1).toContain("<i>GRAY HERON</i>");
     const nav = await translatedFile(e, "OEBPS/nav.xhtml");
     expect(nav).toContain(">CHAPTER ONE</a>");
+  });
+
+  it("counts each chunk's own requests, though chapters run at the same time", async () => {
+    const e = await setup((body) => translateReply(body));
+    const prepared = await preparePhase3(e);
+    await runPhase3(e, prepared);
+    let calls = 0;
+    for (const chunk of prepared.plan.chunks) {
+      const r = await readJson(
+        e.paths.phase3Result(e.projectId, e.bookId, chunk.index),
+        ChunkResult,
+      );
+      expect(r?.usage.calls).toBe(1);
+      calls += r!.usage.calls;
+    }
+    expect(calls).toBe(server!.requests.length);
   });
 
   it("resumes without repeating finished chunks", async () => {
@@ -171,6 +195,40 @@ describe("phase 3", () => {
     const glossary = await readJson(e.paths.phase3Glossary(e.projectId, e.bookId), Glossary);
     expect(glossary?.terms.map((t) => t.source)).toEqual(["Mira"]);
     expect(JSON.stringify(server!.requests.at(-1)!.messages)).toContain("Terms introduced earlier");
+  });
+
+  it("translates each chapter in one request in chapters mode, with the story so far", async () => {
+    const e = await setup((body) => translateReply(body), 100_000);
+    e.mode = "chapters";
+    e.synopses = new Map(e.segments.map((s) => [s.id, `What happens in ${s.title}.`]));
+    const prepared = await preparePhase3(e);
+    expect(prepared.plan.chunks.length).toBe(prepared.plan.chapters.length);
+    const summary = await runPhase3(e, prepared);
+    expect(summary).toMatchObject({ flagged: 0, refused: 0 });
+    const sent = server!.requests.map(promptText);
+    expect(sent).toHaveLength(prepared.plan.chapters.length);
+    expect(sent.some((t) => t.includes("# The story so far\n"))).toBe(true);
+    expect(sent.some((t) => t.includes("- Chapter One: What happens in Chapter One."))).toBe(true);
+    expect(sent.some((t) => t.includes("# Text just before this part"))).toBe(false);
+  });
+
+  it("sends a long chapter in parts, each with the chapter and its translation so far", async () => {
+    const e = await setup((body) => translateReply(body), 120);
+    e.mode = "chapters";
+    const prepared = await preparePhase3(e);
+    const long = prepared.plan.chapters.find((c) => c.chunks.length > 1)!;
+    expect(long).toBeDefined();
+    await runPhase3(e, prepared);
+    const [firstPart, secondPart] = long.chunks.map((i) => prepared.plan.chunks[i]!);
+    const opening = prepared.units.get(secondPart!.unitKeys[0]!)!.text;
+    const request = server!.requests.find((r) => requestedUnits(r)[0]?.text === opening)!;
+    const text = promptText(request);
+    expect(text).toContain("# This chapter\n");
+    expect(text).toContain("[The part to translate now starts here.]");
+    expect(text).toContain("# Your translation of this chapter so far\n");
+    const lastOfFirst = prepared.units.get(firstPart!.unitKeys.at(-1)!)!.text;
+    expect(text).toContain(stripPlaceholders(shout(lastOfFirst)).trim());
+    expect(text).not.toContain("# Text just before this part");
   });
 
   it("uses manual edits when building", async () => {

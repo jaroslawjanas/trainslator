@@ -16,12 +16,26 @@ export const Project = z.object({
   options: z.object({
     pauseAfterPhase: z.boolean(),
   }),
+  /** The Usage page counts requests sent from then on; null counts all. The call log keeps every request. */
+  usageResetAt: IsoDate.nullable().default(null),
   createdAt: IsoDate,
   updatedAt: IsoDate,
 });
 export type Project = z.infer<typeof Project>;
 
-export const PhaseState = z.enum(["none", "running", "done", "done_with_errors", "failed"]);
+/**
+ * "stopped" is never saved: a phase saved as "running" is reported that way
+ * once its job isn't active any more (cancelled, failed, paused, or cut
+ * short by a restart).
+ */
+export const PhaseState = z.enum([
+  "none",
+  "running",
+  "stopped",
+  "done",
+  "done_with_errors",
+  "failed",
+]);
 export type PhaseState = z.infer<typeof PhaseState>;
 
 export const Pair = z.object({
@@ -42,6 +56,14 @@ export type Pair = z.infer<typeof Pair>;
 export const RefKbMode = z.enum(["auto", "all", "relevant"]);
 export type RefKbMode = z.infer<typeof RefKbMode>;
 
+/**
+ * How phase 3 sends a chapter: in chunks of about 1,700 words with a few
+ * paragraphs of context, or whole (very long chapters in a few parts) with
+ * the summaries of the chapters before it.
+ */
+export const TranslationMode = z.enum(["chunks", "chapters"]);
+export type TranslationMode = z.infer<typeof TranslationMode>;
+
 export const Book = z.object({
   schemaVersion: SchemaVersion,
   id: Id,
@@ -50,6 +72,7 @@ export const Book = z.object({
   /** Reference pairs used for this book, in prompt order. */
   pairIds: z.array(Id),
   refKbMode: RefKbMode,
+  translationMode: TranslationMode.default("chunks"),
   options: z.object({
     newIdentifier: z.boolean(),
     removeEmbeddedFonts: z.boolean(),

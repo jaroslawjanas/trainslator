@@ -14,7 +14,7 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import { IconBooks, IconMoon, IconSettings, IconSun } from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
-import { type ReactNode, useEffect } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useMatches } from "react-router";
 import { get } from "../api/client.ts";
 import { useLiveEvents } from "../api/live.ts";
@@ -24,6 +24,20 @@ import { BOOK_STAGES, PAIR_STAGES, type StageDef } from "../lib/stages.ts";
 import { useProject } from "../pages/ProjectPage.tsx";
 import { ActivityButton, useJobs } from "./JobsIndicator.tsx";
 import { StageMark } from "./StageMark.tsx";
+
+const WideContext = createContext<(wide: boolean) => void>(() => {});
+
+/**
+ * Lets a page use the whole width of the window instead of the usual
+ * reading width, e.g. Review with several versions side by side.
+ */
+export function useWidePage(wide: boolean): void {
+  const setWide = useContext(WideContext);
+  useEffect(() => {
+    setWide(wide);
+    return () => setWide(false);
+  }, [wide, setWide]);
+}
 
 /** Two facing pages, slightly open: the app's mark. */
 export function BookMark({ size = 22 }: { size?: number }) {
@@ -235,6 +249,7 @@ function SchemeToggle() {
 export function Layout() {
   useLiveEvents();
   const [opened, { toggle, close }] = useDisclosure(false);
+  const [wide, setWide] = useState(false);
   const params = useRouteParams();
   const location = useLocation();
   // biome-ignore lint/correctness/useExhaustiveDependencies: close the mobile menu on navigation
@@ -299,8 +314,10 @@ export function Layout() {
         </AppShell.Section>
       </AppShell.Navbar>
       <AppShell.Main>
-        <Box px={{ base: "md", sm: 40 }} pb={64} maw={1440}>
-          <Outlet />
+        <Box px={{ base: "md", sm: 40 }} pb={64} maw={wide ? undefined : 1440}>
+          <WideContext.Provider value={setWide}>
+            <Outlet />
+          </WideContext.Provider>
         </Box>
       </AppShell.Main>
     </AppShell>

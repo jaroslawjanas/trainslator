@@ -1,8 +1,8 @@
 /**
- * Concurrency limits per model and per connection, shared by all jobs.
- * Two lanes: interactive calls (Test, re-translating one unit) go first.
- * After a rate-limit error the model's parallelism is halved and recovers
- * gradually with successful calls.
+ * How many requests run at once per connection (provider), across all its
+ * models and all jobs. Two lanes: interactive calls (Test, re-translating
+ * one unit) go first. After a rate-limit error the connection's parallelism
+ * is halved and recovers gradually with successful calls.
  */
 
 export type Lane = "normal" | "interactive";
@@ -75,86 +75,59 @@ function abortError(): Error {
   return e;
 }
 
-export interface LimitInfo {
-  modelLimit: number;
-  connectionId: string;
-  connectionLimit: number | null;
-}
-
 export class Limiter {
-  private readonly models = new Map<string, Semaphore>();
   private readonly connections = new Map<string, Semaphore>();
   private readonly factors = new Map<string, number>();
-  private readonly limits: (modelId: string) => LimitInfo;
+  private readonly limit: (connectionId: string) => number;
 
-  constructor(limits: (modelId: string) => LimitInfo) {
-    this.limits = limits;
+  constructor(limit: (connectionId: string) => number) {
+    this.limit = limit;
   }
 
-  private modelSem(modelId: string): Semaphore {
-    let sem = this.models.get(modelId);
-    if (!sem) {
-      sem = new Semaphore(() => {
-        const base = this.limits(modelId).modelLimit;
-        return Math.max(1, Math.floor(base * (this.factors.get(modelId) ?? 1)));
-      });
-      this.models.set(modelId, sem);
-    }
-    return sem;
-  }
-
-  private connSem(connectionId: string, limit: () => number): Semaphore {
+  private sem(connectionId: string): Semaphore {
     let sem = this.connections.get(connectionId);
     if (!sem) {
-      sem = new Semaphore(limit);
+      sem = new Semaphore(() => {
+        const base = this.limit(connectionId);
+        return Math.max(1, Math.floor(base * (this.factors.get(connectionId) ?? 1)));
+      });
       this.connections.set(connectionId, sem);
     }
     return sem;
   }
 
-  /** Waits for a slot on both the model and its connection. Returns the release function. */
-  async acquire(modelId: string, lane: Lane = "normal", signal?: AbortSignal): Promise<() => void> {
-    const info = this.limits(modelId);
-    const model = this.modelSem(modelId);
-    await model.acquire(lane, signal);
-    let conn: Semaphore | null = null;
-    if (info.connectionLimit !== null) {
-      conn = this.connSem(
-        info.connectionId,
-        () => this.limits(modelId).connectionLimit ?? Number.POSITIVE_INFINITY,
-      );
-      try {
-        await conn.acquire(lane, signal);
-      } catch (error) {
-        model.release();
-        throw error;
-      }
-    }
+  /** Waits for a slot on the connection. Returns the release function. */
+  async acquire(
+    connectionId: string,
+    lane: Lane = "normal",
+    signal?: AbortSignal,
+  ): Promise<() => void> {
+    const sem = this.sem(connectionId);
+    await sem.acquire(lane, signal);
     let released = false;
     return () => {
       if (released) return;
       released = true;
-      conn?.release();
-      model.release();
+      sem.release();
     };
   }
 
-  /** Halves the model's effective parallelism after a rate-limit error. */
-  backoff(modelId: string): void {
-    const current = this.factors.get(modelId) ?? 1;
-    this.factors.set(modelId, Math.max(0.05, current / 2));
+  /** Halves the connection's effective parallelism after a rate-limit error. */
+  backoff(connectionId: string): void {
+    const current = this.factors.get(connectionId) ?? 1;
+    this.factors.set(connectionId, Math.max(0.05, current / 2));
   }
 
   /** Recovers parallelism gradually after successful calls. */
-  recover(modelId: string): void {
-    const current = this.factors.get(modelId) ?? 1;
+  recover(connectionId: string): void {
+    const current = this.factors.get(connectionId) ?? 1;
     if (current >= 1) return;
-    this.factors.set(modelId, Math.min(1, current * 1.25));
-    this.models.get(modelId)?.drain();
+    this.factors.set(connectionId, Math.min(1, current * 1.25));
+    this.connections.get(connectionId)?.drain();
   }
 
-  stats(modelId: string): { active: number; waiting: number } {
-    const sem = this.models.get(modelId);
+  stats(connectionId: string): { active: number; waiting: number } {
+    const sem = this.connections.get(connectionId);
     return { active: sem?.active ?? 0, waiting: sem?.waiting ?? 0 };
   }
 }

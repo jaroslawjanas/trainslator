@@ -7,8 +7,11 @@ import type { NormalizedUsage } from "./response.ts";
 
 export const CallLogEntry = z.object({
   id: z.string(),
+  /** When the request was sent (after waiting for a free slot). */
   at: z.string(),
   projectId: z.string().nullable(),
+  /** The job that made the request, if any. */
+  jobId: z.string().nullable().default(null),
   step: z.string(),
   label: z.string(),
   modelId: z.string(),
@@ -20,7 +23,10 @@ export const CallLogEntry = z.object({
   blockTokens: z.array(z.object({ label: z.string(), tokens: z.number() })),
   params: z.record(z.string(), z.unknown()),
   finishReason: z.string().nullable(),
+  /** Time from sending to the complete answer. */
   latencyMs: z.number(),
+  /** Time spent waiting for a free slot before sending. */
+  waitMs: z.number().default(0),
   usage: Usage,
   error: z.string().nullable(),
 });
@@ -42,9 +48,12 @@ export function costOf(usage: NormalizedUsage | null, pricing: Pricing | null): 
 
 export class CallLog {
   private readonly paths: DataPaths;
-  private readonly options: { logBodies: () => boolean };
+  private readonly options: { logBodies: () => boolean; onEntry?: (entry: CallLogEntry) => void };
 
-  constructor(paths: DataPaths, options: { logBodies: () => boolean }) {
+  constructor(
+    paths: DataPaths,
+    options: { logBodies: () => boolean; onEntry?: (entry: CallLogEntry) => void },
+  ) {
     this.paths = paths;
     this.options = options;
   }
@@ -53,6 +62,7 @@ export class CallLog {
     entry: CallLogEntry,
     bodies?: { request: unknown; response: unknown },
   ): Promise<void> {
+    this.options.onEntry?.(entry);
     if (!entry.projectId) return;
     await appendJsonLine(this.paths.callsLog(entry.projectId), entry);
     if (bodies && this.options.logBodies()) {

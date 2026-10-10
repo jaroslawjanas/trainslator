@@ -11,6 +11,7 @@ import { unitAtOrAfter } from "../epub/flow.ts";
 import { extractTocUnits } from "../epub/write.ts";
 import { type CallTarget, callStructured, type LlmRuntime } from "../llm/call.ts";
 import { isLlmError, LlmError } from "../llm/errors.ts";
+import { thinkingRoomFactor } from "../llm/presets.ts";
 import { jsonCandidates } from "../llm/response.ts";
 import { estimateTokens, reasoningAllowance } from "../llm/tokens.ts";
 import {
@@ -26,6 +27,7 @@ import {
 import { unicodeScriptsFor } from "../shared/languages.ts";
 import { addUsage, emptyUsage, type Usage } from "../shared/schemas/common.ts";
 import type { Segment } from "../shared/schemas/epub.ts";
+import type { TranslationMode } from "../shared/schemas/project.ts";
 import {
   ChunkResult,
   DocUnits,
@@ -68,8 +70,12 @@ export interface Phase3Env {
   /** Chapters (segments at the chosen TOC depth). */
   segments: Segment[];
   keepDocs: Set<number>;
+  /** Chunks with a few paragraphs of context (default), or whole chapters. */
+  mode?: TranslationMode;
   /** Source tokens per chunk; default derived from the model's output limit. */
   chunkTokens?: number;
+  /** False asks the model again instead of reusing saved answers to the same request. */
+  useCache?: boolean;
   signal?: AbortSignal;
   /** Called before each chunk; throws to stop at a chunk boundary (pause). */
   checkpoint?: () => void;
@@ -103,7 +109,14 @@ function expansionFor(script: string | null): number {
   }
 }
 
-export function defaultChunkTokens(env: Pick<Phase3Env, "target" | "languages" | "rt">): number {
+/** Most source tokens in one request: a chunk, or a part of a long chapter (about 5,000 words). */
+const MAX_CHUNK_TOKENS: Record<TranslationMode, number> = { chunks: 2500, chapters: 8000 };
+/** Most units in one request. */
+const MAX_CHUNK_UNITS: Record<TranslationMode, number> = { chunks: 80, chapters: 300 };
+
+export function defaultChunkTokens(
+  env: Pick<Phase3Env, "target" | "languages" | "rt" | "mode">,
+): number {
   const { model, step } = env.target;
   const allowance = reasoningAllowance({
     enabled: step.reasoning.enabled,
@@ -111,17 +124,66 @@ export function defaultChunkTokens(env: Pick<Phase3Env, "target" | "languages" |
     budgetTokens: step.reasoning.budgetTokens,
     mode: model.reasoningMode,
     samples: env.rt.calibration.reasoningSamples(model.id, "phase3.translate"),
+    factor: thinkingRoomFactor(env.target.connection.kind),
   });
-  const cap =
-    Math.min(model.maxOutputTokens, step.maxOutputTokens ?? Number.POSITIVE_INFINITY) - allowance;
+  const output = Math.min(model.maxOutputTokens, step.maxOutputTokens ?? Number.POSITIVE_INFINITY);
+  // Thinking gets at most half of the output here; the ceiling is set per request.
+  const cap = output - Math.min(allowance, output / 2);
   const perSource = expansionFor(env.languages.targetScript) * 1.2;
-  return Math.max(300, Math.min(2500, Math.floor(Math.max(cap, 1000) / perSource)));
+  const most = MAX_CHUNK_TOKENS[env.mode ?? "chunks"];
+  return Math.max(300, Math.min(most, Math.floor(Math.max(cap, 1000) / perSource)));
 }
 
 const UNIT_OVERHEAD_TOKENS = 18;
 
 function unitTokens(u: TransUnit): number {
   return estimateTokens(u.text) + UNIT_OVERHEAD_TOKENS;
+}
+
+/** Chunks mode: fills each chunk up to the limit, in reading order. */
+function fillParts(units: TransUnit[], maxTokens: number, maxUnits: number): TransUnit[][] {
+  const parts: TransUnit[][] = [];
+  let part: TransUnit[] = [];
+  let tokens = 0;
+  for (const u of units) {
+    const t = unitTokens(u);
+    if (part.length > 0 && (tokens + t > maxTokens || part.length >= maxUnits)) {
+      parts.push(part);
+      part = [];
+      tokens = 0;
+    }
+    part.push(u);
+    tokens += t;
+  }
+  if (part.length > 0) parts.push(part);
+  return parts;
+}
+
+/** Chapters mode: the whole chapter, or as few parts of about equal size as fit the limits. */
+function evenParts(units: TransUnit[], maxTokens: number, maxUnits: number): TransUnit[][] {
+  const sizes = units.map(unitTokens);
+  const total = sizes.reduce((a, b) => a + b, 0);
+  const count = Math.max(1, Math.ceil(total / maxTokens), Math.ceil(units.length / maxUnits));
+  const parts: TransUnit[][] = [];
+  let part: TransUnit[] = [];
+  let tokens = 0;
+  let before = 0;
+  units.forEach((u, i) => {
+    const t = sizes[i]!;
+    const pastTarget =
+      parts.length < count - 1 && before + tokens + t / 2 > ((parts.length + 1) * total) / count;
+    const full = tokens + t > maxTokens || part.length >= maxUnits;
+    if (part.length > 0 && (pastTarget || full)) {
+      parts.push(part);
+      before += tokens;
+      part = [];
+      tokens = 0;
+    }
+    part.push(u);
+    tokens += t;
+  });
+  if (part.length > 0) parts.push(part);
+  return parts;
 }
 
 export interface PreparedPhase3 {
@@ -191,39 +253,38 @@ export async function preparePhase3(env: Phase3Env): Promise<PreparedPhase3> {
   }
   placed.sort((a, b) => a.order - b.order);
 
+  const mode = env.mode ?? "chunks";
   const chunkTokens = env.chunkTokens ?? defaultChunkTokens(env);
   const chapters: PlanChapter[] = [];
   const chunks: PlanChunk[] = [];
-  const chapterFor = new Map<string, PlanChapter>();
-  const current = new Map<string, PlanChunk>();
+  const unitsOf = new Map<string, TransUnit[]>();
   for (const { unit, segment } of placed) {
     if (!unit.translate) continue;
     const chapterId = segment ? segment.id : `doc${unit.docIndex}`;
-    let chapter = chapterFor.get(chapterId);
-    if (!chapter) {
-      chapter = {
+    let list = unitsOf.get(chapterId);
+    if (!list) {
+      chapters.push({
         id: chapterId,
         title: segment ? segment.title : `Other text in ${unit.file.split("/").pop()}`,
         segmentId: segment?.id ?? null,
         chunks: [],
-      };
-      chapterFor.set(chapterId, chapter);
-      chapters.push(chapter);
+      });
+      list = [];
+      unitsOf.set(chapterId, list);
     }
-    const tokens = unitTokens(unit);
-    let chunk = current.get(chapterId);
-    if (
-      !chunk ||
-      (chunk.unitKeys.length > 0 &&
-        (chunk.sourceTokens + tokens > chunkTokens || chunk.unitKeys.length >= 80))
-    ) {
-      chunk = { index: chunks.length, chapterId, unitKeys: [], sourceTokens: 0 };
-      chunks.push(chunk);
-      chapter.chunks.push(chunk.index);
-      current.set(chapterId, chunk);
+    list.push(unit);
+  }
+  const split = mode === "chapters" ? evenParts : fillParts;
+  for (const chapter of chapters) {
+    for (const part of split(unitsOf.get(chapter.id)!, chunkTokens, MAX_CHUNK_UNITS[mode])) {
+      chapter.chunks.push(chunks.length);
+      chunks.push({
+        index: chunks.length,
+        chapterId: chapter.id,
+        unitKeys: part.map((u) => u.key),
+        sourceTokens: part.reduce((n, u) => n + unitTokens(u), 0),
+      });
     }
-    chunk.unitKeys.push(unit.key);
-    chunk.sourceTokens += tokens;
   }
 
   const plan = await writeJson(paths.phase3Plan(projectId, bookId), Phase3Plan, {
@@ -255,6 +316,7 @@ export function chunkInputsHash(
   chunk: PlanChunk,
   units: Map<string, TransUnit>,
   synopsis: string | null,
+  story: string[] = [],
 ): string {
   const { model, step } = env.target;
   return sha(
@@ -273,6 +335,8 @@ export function chunkInputsHash(
       model.modelName,
       step,
       chunk.unitKeys.map((k) => [k, units.get(k)?.text]),
+      // Added only in chapters mode, so results from chunks mode keep their hashes.
+      ...(env.mode === "chapters" ? ["chapters", story] : []),
     ]),
   );
 }
@@ -343,6 +407,96 @@ function previousContext(
     .filter((p) => p.source.trim());
 }
 
+/** Most characters of earlier chapters' summaries sent with a chapter (about 6,000 tokens). */
+const STORY_CHARS = 24_000;
+
+/** Chapters mode: phase 2's summaries of the chapters before this one, oldest first. */
+export function storySoFar(env: Phase3Env, plan: Phase3Plan, chapter: PlanChapter): string[] {
+  if (env.mode !== "chapters") return [];
+  const out: string[] = [];
+  let chars = 0;
+  for (let i = plan.chapters.findIndex((c) => c.id === chapter.id) - 1; i >= 0; i--) {
+    const c = plan.chapters[i]!;
+    const synopsis = c.segmentId ? env.synopses.get(c.segmentId) : undefined;
+    if (!synopsis) continue;
+    const line = `${c.title.trim() || "Untitled"}: ${synopsis}`;
+    if (chars + line.length > STORY_CHARS) break;
+    chars += line.length;
+    out.unshift(line);
+  }
+  return out;
+}
+
+/** Source tokens of a chapter shown before and after the part being translated. */
+const CONTEXT_BEFORE_TOKENS = 12_000;
+const CONTEXT_AFTER_TOKENS = 6_000;
+
+/**
+ * Chapters mode, for a request that covers only part of its chapter: which
+ * units of the chapter it sees. All of the request, plus up to a limit of
+ * the text before and after it. Null when the request is the whole chapter.
+ */
+export function chapterWindow(
+  prepared: PreparedPhase3,
+  chapter: PlanChapter,
+  firstKey: string,
+  lastKey: string,
+): { keys: string[]; from: number; first: number; last: number; to: number } | null {
+  const keys = chapter.chunks.flatMap((i) => prepared.plan.chunks[i]?.unitKeys ?? []);
+  const first = keys.indexOf(firstKey);
+  const last = keys.indexOf(lastKey);
+  if (first < 0 || last < 0 || (first === 0 && last === keys.length - 1)) return null;
+  const tokensOf = (k: string) => {
+    const u = prepared.units.get(k);
+    return u ? unitTokens(u) : 0;
+  };
+  let from = first;
+  let budget = CONTEXT_BEFORE_TOKENS;
+  while (from > 0 && budget >= tokensOf(keys[from - 1]!)) {
+    from--;
+    budget -= tokensOf(keys[from]!);
+  }
+  let to = last + 1;
+  budget = CONTEXT_AFTER_TOKENS;
+  while (to < keys.length && budget >= tokensOf(keys[to]!)) {
+    budget -= tokensOf(keys[to]!);
+    to++;
+  }
+  return { keys, from, first, last, to };
+}
+
+/**
+ * Chapters mode: the chapter's text around a part, with the part marked, and
+ * the translation of the chapter up to the part (saved results plus `fresh`
+ * ones from this run that aren't saved yet).
+ */
+function chapterContext(
+  state: RunState,
+  chapter: PlanChapter,
+  units: TransUnit[],
+  fresh: UnitResult[],
+): { text: string; translated: string[] } | null {
+  const w = chapterWindow(state.prepared, chapter, units[0]!.key, units.at(-1)!.key);
+  if (!w) return null;
+  const plain = (k: string) => stripPlaceholders(state.prepared.units.get(k)?.text ?? "").trim();
+  const lines: string[] = w.from > 0 ? ["[…]"] : [];
+  for (let i = w.from; i < w.to; i++) {
+    if (i === w.first) lines.push("[The part to translate now starts here.]");
+    lines.push(plain(w.keys[i]!));
+    if (i === w.last) lines.push("[The part to translate now ends here.]");
+  }
+  if (w.to < w.keys.length) lines.push("[…]");
+  const done = new Map<string, string>();
+  for (const i of chapter.chunks)
+    for (const u of state.results.get(i)?.units ?? []) if (u.text) done.set(u.key, u.text);
+  for (const u of fresh) if (u.text) done.set(u.key, u.text);
+  const translated = w.keys
+    .slice(w.from, w.first)
+    .flatMap((k) => (done.has(k) ? [stripPlaceholders(done.get(k)!).trim()] : []));
+  if (w.from > 0 && translated.length > 0) translated.unshift("[…]");
+  return { text: lines.join("\n\n"), translated };
+}
+
 function toPromptUnits(units: TransUnit[]): {
   ids: Map<string, TransUnit>;
   promptUnits: Phase3Unit[];
@@ -362,6 +516,17 @@ function toPromptUnits(units: TransUnit[]): {
   return { ids, promptUnits };
 }
 
+interface RequestOptions {
+  useCache: boolean;
+  instruction: string | null;
+  label: string;
+  salvage?: boolean;
+  /** Chapters mode: translations from this run, not saved yet, of units earlier in the chapter. */
+  fresh?: UnitResult[];
+  /** Also told about every request's usage (the chunk's own total). */
+  onUsage?: (usage: Usage) => void;
+}
+
 /** Translates a list of units in one request (with repair turns); returns per-unit results. */
 async function requestUnits(
   state: RunState,
@@ -369,11 +534,13 @@ async function requestUnits(
   chunk: PlanChunk,
   units: TransUnit[],
   previous: { source: string; translation: string }[],
-  options: { useCache: boolean; instruction: string | null; label: string; salvage?: boolean },
+  options: RequestOptions,
 ): Promise<{ results: UnitResult[]; coined: Phase3Output["coined"] }> {
   const env = state.env;
   const { ids, promptUnits } = toPromptUnits(units);
   const synopsis = chapter.segmentId ? (env.synopses.get(chapter.segmentId) ?? null) : null;
+  const chapters = env.mode === "chapters";
+  const around = chapters ? chapterContext(state, chapter, units, options.fresh ?? []) : null;
   const blocks = phase3Blocks({
     sourceName: env.languages.sourceName,
     targetName: env.languages.targetName,
@@ -383,7 +550,10 @@ async function requestUnits(
     bookKb: env.bookKb,
     glossary: state.glossary.map((g) => ({ source: g.source, target: g.target, note: g.note })),
     synopsis,
-    previous,
+    storySoFar: storySoFar(env, state.prepared.plan, chapter),
+    chapterText: around?.text ?? null,
+    translatedSoFar: around?.translated ?? [],
+    previous: chapters ? [] : previous,
     units: promptUnits,
     instruction: options.instruction,
   });
@@ -408,6 +578,7 @@ async function requestUnits(
       signal: env.signal,
       onUsage: (u) => {
         state.usage = addUsage(state.usage, u);
+        options.onUsage?.(u);
         env.onUsage?.(u);
       },
     });
@@ -440,6 +611,7 @@ async function requestUnits(
         }));
       const second = await requestUnits(state, chapter, chunk, units.slice(half), lastOfFirst, {
         ...options,
+        fresh: [...(options.fresh ?? []), ...first.results],
         label: `${options.label} (part 2)`,
       });
       return {
@@ -535,7 +707,7 @@ async function salvage(
   requested: { id: string; unit: TransUnit }[],
   error: LlmError,
   previous: { source: string; translation: string }[],
-  options: { useCache: boolean; instruction: string | null; label: string },
+  options: RequestOptions,
 ): Promise<{ results: UnitResult[]; coined: Phase3Output["coined"] }> {
   const ctx = checkContext(state);
   const best = bestAttempts(state, requested, error);
@@ -562,6 +734,7 @@ async function salvage(
       try {
         const r = await requestUnits(state, chapter, chunk, [unit], previous, {
           ...options,
+          fresh: [...(options.fresh ?? []), ...results.values()],
           useCache: false,
           salvage: false,
           label: `${options.label} (retry ${unit.key})`,
@@ -578,6 +751,7 @@ async function salvage(
           !isLlmError(e) ||
           e.kind === "aborted" ||
           e.kind === "auth" ||
+          e.kind === "config" ||
           e.kind === "context_overflow"
         )
           throw e;
@@ -626,6 +800,13 @@ async function addCoined(
   state.glossary = updated.terms;
 }
 
+/** The reasoning setting a chunk was translated with: its effort, "on" or "off". */
+function reasoningLabel(target: CallTarget): string {
+  const r = target.step.reasoning;
+  if (!r.enabled && target.model.reasoningMode === "optional") return "off";
+  return r.enabled && r.effort ? r.effort : "on";
+}
+
 async function translateChunk(
   state: RunState,
   chapter: PlanChapter,
@@ -636,11 +817,20 @@ async function translateChunk(
   const units = chunk.unitKeys
     .map((k) => state.prepared.units.get(k))
     .filter((u): u is TransUnit => u !== undefined);
-  const before = state.usage;
+  // Only this chunk's requests: other chapters run at the same time.
+  let usage = emptyUsage();
   const previous = previousContext(state, chapter, chunk.index);
+  const parts = chapter.chunks.length;
+  const label =
+    env.mode === "chapters"
+      ? `${chapter.title}${parts > 1 ? ` (part ${chapter.chunks.indexOf(chunk.index) + 1} of ${parts})` : ""}`
+      : `chunk ${chunk.index + 1} · ${chapter.title}`;
   const { results, coined } = await requestUnits(state, chapter, chunk, units, previous, {
     ...options,
-    label: `chunk ${chunk.index + 1} · ${chapter.title}`.slice(0, 120),
+    label: label.slice(0, 120),
+    onUsage: (u) => {
+      usage = addUsage(usage, u);
+    },
   });
   for (const r of results) {
     const unit = state.prepared.units.get(r.key);
@@ -652,16 +842,6 @@ async function translateChunk(
   await addCoined(state, coined, chunk.index);
   const synopsis = chapter.segmentId ? (env.synopses.get(chapter.segmentId) ?? null) : null;
   const old = state.results.get(chunk.index);
-  const usageDelta = {
-    ...state.usage,
-    calls: state.usage.calls - before.calls,
-    promptTokens: state.usage.promptTokens - before.promptTokens,
-    cachedTokens: state.usage.cachedTokens - before.cachedTokens,
-    cacheWriteTokens: state.usage.cacheWriteTokens - before.cacheWriteTokens,
-    completionTokens: state.usage.completionTokens - before.completionTokens,
-    reasoningTokens: state.usage.reasoningTokens - before.reasoningTokens,
-    cost: state.usage.cost === null ? null : state.usage.cost - (before.cost ?? 0),
-  };
   const result = await writeJson(
     env.paths.phase3Result(env.projectId, env.bookId, chunk.index),
     ChunkResult,
@@ -669,12 +849,20 @@ async function translateChunk(
       schemaVersion: 1,
       chunkIndex: chunk.index,
       chapterId: chapter.id,
-      inputsHash: chunkInputsHash(env, chunk, state.prepared.units, synopsis),
+      inputsHash: chunkInputsHash(
+        env,
+        chunk,
+        state.prepared.units,
+        synopsis,
+        storySoFar(env, state.prepared.plan, chapter),
+      ),
       promptVersion: PHASE3_PROMPT_VERSION,
       modelId: env.target.model.id,
+      mode: env.mode ?? "chunks",
+      reasoning: reasoningLabel(env.target),
       instruction: options.instruction,
       finishedAt: new Date().toISOString(),
-      usage: usageDelta,
+      usage,
       units: results,
       history: old ? [...old.history, { at: old.finishedAt, units: old.units }].slice(-10) : [],
     },
@@ -696,7 +884,8 @@ export interface Phase3Summary {
 /**
  * Translates every chunk that has no result yet. Chapters run in parallel
  * (the limiter caps requests); chunks inside a chapter run in order because
- * each uses the end of the previous one as context.
+ * each uses the translation before it as context. In chapters mode a chunk
+ * is a whole chapter, or a part of a long one.
  */
 export async function runPhase3(env: Phase3Env, prepared?: PreparedPhase3): Promise<Phase3Summary> {
   const p = prepared ?? (await preparePhase3(env));
@@ -731,15 +920,26 @@ export async function runPhase3(env: Phase3Env, prepared?: PreparedPhase3): Prom
     for (const chunk of chunks) {
       if (env.signal?.aborted) throw new LlmError("aborted", "Cancelled");
       env.checkpoint?.();
-      await translateChunk(state, chapter, chunk, { useCache: true, instruction: null });
+      await translateChunk(state, chapter, chunk, {
+        useCache: env.useCache ?? true,
+        instruction: null,
+      });
       translated++;
       state.done++;
       report(chapter.title);
     }
   };
 
-  // Warm the prompt cache with one request before fanning out.
-  const first = todo[0];
+  // Warm the prompt cache with one request before fanning out. Whole
+  // chapters take long to answer, so the shortest one goes first.
+  const first =
+    env.mode === "chapters"
+      ? todo.reduce<(typeof todo)[number] | undefined>(
+          (best, t) =>
+            !best || t.chunks[0]!.sourceTokens < best.chunks[0]!.sourceTokens ? t : best,
+          undefined,
+        )
+      : todo[0];
   if (first) {
     const [firstChunk, ...rest] = first.chunks;
     await runChapter(first.chapter, [firstChunk!]);

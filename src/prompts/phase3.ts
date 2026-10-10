@@ -39,6 +39,13 @@ export interface Phase3PromptInput {
   bookKb: string | null;
   glossary: { source: string; target: string; note: string }[];
   synopsis: string | null;
+  /** Whole chapters: phase 2's summaries of the chapters before this one, oldest first. */
+  storySoFar?: string[];
+  /** Whole chapters sent in parts: the chapter's text around this part, with the part marked. */
+  chapterText?: string | null;
+  /** Whole chapters sent in parts: the translation of the chapter up to this part. */
+  translatedSoFar?: string[];
+  /** Chunks: the last paragraphs before this chunk, with their translations. */
   previous: { source: string; translation: string }[];
   units: Phase3Unit[];
   /** Extra instruction for re-translations ("more formal"). */
@@ -95,6 +102,21 @@ export function phase3Blocks(input: Phase3PromptInput): PromptBlock[] {
       cacheBreakpoint: true,
     });
   }
+  if (input.storySoFar && input.storySoFar.length > 0) {
+    blocks.push({
+      role: "user",
+      label: "story so far",
+      text: `# The story so far\nSummaries of the chapters before this one, for context.\n${input.storySoFar.map((s) => `- ${s}`).join("\n")}`,
+    });
+  }
+  if (input.chapterText) {
+    blocks.push({
+      role: "user",
+      label: "chapter",
+      text: `# This chapter\nIt is translated in parts. Here is its text around the part to translate now, for context only: translate just the units listed at the end.\n\n${input.chapterText}`,
+      cacheBreakpoint: true,
+    });
+  }
   if (input.glossary.length > 0) {
     blocks.push({
       role: "user",
@@ -107,6 +129,13 @@ export function phase3Blocks(input: Phase3PromptInput): PromptBlock[] {
       role: "user",
       label: "synopsis",
       text: `# What happens in this chapter\n${input.synopsis}`,
+    });
+  }
+  if (input.translatedSoFar && input.translatedSoFar.length > 0) {
+    blocks.push({
+      role: "user",
+      label: "translation so far",
+      text: `# Your translation of this chapter so far\nContinue from here in the same voice and with the same word choices. Don't translate it again.\n\n${input.translatedSoFar.join("\n\n")}`,
     });
   }
   if (input.previous.length > 0) {
@@ -124,7 +153,7 @@ export function phase3Blocks(input: Phase3PromptInput): PromptBlock[] {
   blocks.push({
     role: "user",
     label: "units",
-    text: `# Units to translate into ${input.targetName}${instruction}\n${jsonLines(
+    text: `# Units to translate into ${input.targetName}${input.chapterText ? " (the part marked in the chapter above)" : ""}${instruction}\n${jsonLines(
       input.units.map((u) =>
         u.keep.length > 0 ? { id: u.id, text: u.text, keep: u.keep } : { id: u.id, text: u.text },
       ),

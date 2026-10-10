@@ -30,7 +30,7 @@ import {
 } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
 import { count, plural } from "../../lib/format.ts";
-import { EntryDrawer } from "./EntryDrawer.tsx";
+import { EntryDrawer, type KbAnswer } from "./EntryDrawer.tsx";
 
 export const KIND_TEXT: Record<string, string> = {
   person: "person",
@@ -459,10 +459,17 @@ export function KbEditor({
               }, "Entry added.")
             : call(() => put<{ kb: Kb }>(`${base}/entries/${e.id}`, e), "Entry saved and locked.")
         }
+        onSaveUnlocked={(e) =>
+          call(
+            () => put<{ kb: Kb }>(`${base}/entries/${e.id}/unlocked`, e),
+            "Entry saved, not locked.",
+          )
+        }
         onUnlock={(e) =>
           call(() => post<{ kb: Kb }>(`${base}/entries/${e.id}/unlock`), "Entry unlocked.")
         }
         onDelete={(e) => call(() => del<{ kb: Kb }>(`${base}/entries/${e.id}`), "Entry deleted.")}
+        onAsk={(e, modelId) => post<KbAnswer>(`${base}/entries/${e.id}/ask`, { modelId })}
       />
     </>
   );

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { makeConnection, makeModel, makeStep } from "../testing/llm-fixtures.ts";
-import { buildRequestBody, type RequestPlan } from "./request.ts";
+import { thinkingRoomFactor } from "./presets.ts";
+import { buildRequestBody, outputLimit, type RequestPlan } from "./request.ts";
 import { toStrictJsonSchema } from "./structured.ts";
+import { reasoningAllowance } from "./tokens.ts";
 
 const schema = toStrictJsonSchema(z.object({ answer: z.string() }));
 
@@ -17,7 +19,7 @@ function plan(overrides: Partial<RequestPlan> = {}): RequestPlan {
     jsonSchema: schema,
     answerBudget: 1000,
     reasoningAllowance: 0,
-    repair: [],
+    turns: [],
     promptCacheKey: "pk",
     ...overrides,
   };
@@ -105,7 +107,7 @@ describe("request bodies", () => {
       makeConnection("http://x"),
       makeModel(),
       makeStep({ temperature: 0.3, extraBody: { top_p: 0.9, response_format: { type: "text" } } }),
-      plan({ repair: [{ previous: "{}", problems: "missing answer" }] }),
+      plan({ turns: [{ kind: "repair", previous: "{}", problems: "missing answer" }] }),
       false,
     );
     expect(body.top_p).toBe(0.9);
@@ -133,7 +135,7 @@ describe("native request bodies", () => {
       makeConnection("http://localhost:11434", { kind: "ollama" }),
       makeModel("ollama", { contextWindow: 32_768 }),
       makeStep({ temperature: 0.3 }),
-      plan({ repair: [{ previous: "{}", problems: "missing answer" }] }),
+      plan({ turns: [{ kind: "repair", previous: "{}", problems: "missing answer" }] }),
       true,
     );
     expect(local).toMatchObject({
@@ -166,8 +168,35 @@ describe("native request bodies", () => {
       false,
     );
     expect(suffixed.model).toBe("deepseek-v4.1-flash");
-    expect(cloud.think).toBe(true);
     expect(cloud.stream).toBe(false);
+  });
+
+  it("sends the reasoning effort to Ollama as the nearest thinking level", () => {
+    const think = (effort: string | null) =>
+      buildRequestBody(
+        makeConnection("https://ollama.com", { kind: "ollama_cloud" }),
+        makeModel("ollama_cloud"),
+        makeStep({ reasoning: { enabled: true, effort, budgetTokens: null } }),
+        plan(),
+        false,
+      ).think;
+    expect([think("minimal"), think("low"), think("medium"), think(null)]).toEqual([
+      "low",
+      "low",
+      "medium",
+      "medium",
+    ]);
+    expect([think("high"), think("xhigh"), think("max")]).toEqual(["high", "high", "high"]);
+    expect(think("none")).toBe(false);
+  });
+
+  it("keeps the output limit within what's left of the context window", () => {
+    const model = makeModel("openai", { maxOutputTokens: 100_000 });
+    const step = makeStep();
+    const p = { answerBudget: 2000, reasoningAllowance: 64_000 };
+    expect(outputLimit(model, step, p)).toBe(66_000);
+    expect(outputLimit(model, step, { ...p, contextRoom: 30_000 })).toBe(30_000);
+    expect(outputLimit(model, step, { ...p, reasoningAllowance: Infinity })).toBe(100_000);
   });
 
   it("builds an Anthropic Messages body with cache breakpoints, schema and effort", () => {
@@ -223,5 +252,19 @@ describe("native request bodies", () => {
     expect(parts[5]!.cache_control).toEqual({ type: "ephemeral", ttl: "1h" });
     // The caller's blocks are not changed by trimming the breakpoints.
     expect(p.blocks.every((b) => b.cacheBreakpoint)).toBe(true);
+  });
+});
+
+describe("room for thinking", () => {
+  it("doubles the effort default for providers that don't report thinking", () => {
+    const base = { enabled: true, effort: "medium", budgetTokens: null, mode: "optional" as const };
+    expect(reasoningAllowance({ ...base, samples: [] })).toBe(16_000);
+    expect(
+      reasoningAllowance({ ...base, samples: [], factor: thinkingRoomFactor("ollama_cloud") }),
+    ).toBe(32_000);
+    expect(thinkingRoomFactor("anthropic")).toBe(1);
+    expect(thinkingRoomFactor("openai")).toBe(1);
+    // A budget you set is used as is.
+    expect(reasoningAllowance({ ...base, budgetTokens: 5000, samples: [], factor: 2 })).toBe(5000);
   });
 });

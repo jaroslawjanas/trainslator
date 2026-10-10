@@ -20,17 +20,21 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { get, post, put } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
-import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { ModelNote } from "../../components/ModelNote.tsx";
+import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { useProject } from "../ProjectPage.tsx";
 import { useSettings } from "../SettingsPage.tsx";
+import { TranslationModeChoice } from "./TranslationModeChoice.tsx";
 import type { BookDetail, ChapterView, UnitView } from "./types.ts";
 import { UnitRow, unitMark } from "./UnitRow.tsx";
 
 interface Estimate {
+  mode: "chunks" | "chapters";
   chunks: number;
   remaining: number;
+  remainingChapters: number;
   sourceTokens: number;
   inputTokens: number;
   cachedTokens: number;
@@ -377,7 +381,7 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
   );
 }
 
-function ChapterList({
+export function ChapterList({
   chapters,
   selected,
   onSelect,
@@ -489,13 +493,48 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
         summary={summary}
         estimate={
           estimate.data && remaining > 0
-            ? `${plural(remaining, "chunk")} to go. ${estimateText({
+            ? `${
+                estimate.data.mode === "chapters"
+                  ? plural(estimate.data.remainingChapters, "chapter")
+                  : plural(remaining, "chunk")
+              } to go. ${estimateText({
                 input: estimate.data.inputTokens,
                 cached: estimate.data.cachedTokens,
                 output: estimate.data.outputTokens,
                 pricing: model?.pricing,
+                subscription: onSubscription(settings.data?.settings, model?.id),
               })}`
             : undefined
+        }
+        extra={
+          state !== "none" &&
+          !running && (
+            <Button
+              variant="default"
+              onClick={async () => {
+                const how =
+                  detail.book.translationMode === "chapters" ? "whole chapters" : "chunks";
+                if (
+                  !window.confirm(
+                    `Translate the whole book again, in ${how}, with the current model and settings? The current translation, with your edits, is saved to History first, so you can compare or restore it.`,
+                  )
+                )
+                  return;
+                try {
+                  await post(`/api/projects/${pid}/books/${bookId}/phase3/redo`);
+                  void client.invalidateQueries({ queryKey: ["jobs"] });
+                } catch (e) {
+                  notifications.show({
+                    color: "red",
+                    title: "Couldn't start the translation",
+                    message: (e as Error).message,
+                  });
+                }
+              }}
+            >
+              Translate the whole book again
+            </Button>
+          )
         }
         actionLabel={state === "none" ? "Translate the book" : "Translate the rest"}
         hideAction={state !== "none" && remaining === 0}
@@ -518,11 +557,18 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
             less consistent.
           </Text>
         )}
+        <TranslationModeChoice
+          pid={pid}
+          bookId={bookId}
+          mode={detail.book.translationMode}
+          disabled={running}
+        />
+        <ModelNote steps={["phase3.translate"]} />
       </RunPanel>
 
       <Tabs value={view} onChange={(v) => v && setParam("view", v)} keepMounted={false}>
         <Tabs.List mb="lg">
-          <Tabs.Tab value="review">Review</Tabs.Tab>
+          <Tabs.Tab value="review">Chapters</Tabs.Tab>
           <Tabs.Tab value="toc">Title and contents</Tabs.Tab>
           <Tabs.Tab value="glossary">Coined terms</Tabs.Tab>
         </Tabs.List>

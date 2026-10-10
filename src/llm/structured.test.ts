@@ -63,6 +63,15 @@ describe("fillMissingNulls", () => {
     expect(schema.safeParse(filled).success).toBe(true);
   });
 
+  it("fills a left-out list with an empty one", () => {
+    const listSchema = z.object({
+      items: z.array(z.object({ name: z.string(), aliases: z.array(z.string()) })),
+    });
+    const filled = fillMissingNulls({ items: [{ name: "Mira" }] }, toStrictJsonSchema(listSchema));
+    expect(filled).toEqual({ items: [{ name: "Mira", aliases: [] }] });
+    expect(listSchema.safeParse(filled).success).toBe(true);
+  });
+
   it("leaves required non-null keys missing, so validation still catches them", () => {
     const filled = fillMissingNulls({ edits: [{ id: "p1", fields: null }] }, json);
     expect(filled).toEqual({ edits: [{ id: "p1", fields: null }] });

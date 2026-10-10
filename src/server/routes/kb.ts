@@ -11,8 +11,10 @@ import {
   removeEntry,
   removeStyleRule,
   saveStyleRule,
+  saveUnlocked,
   unlock,
 } from "../../services/kb.ts";
+import { askAboutEntry } from "../../services/kb-ask.ts";
 import {
   KbEntry,
   KbKind,
@@ -70,6 +72,17 @@ export function kbRoutes(app: AppContext, kind: "pair" | "book"): Hono {
     return c.json({ kb });
   });
 
+  // Your changes without locking: later runs may still change the entry.
+  r.put(`/:pid/${segment}/:id/kb/entries/:eid/unlocked`, async (c) => {
+    const s = scope(c);
+    const entry = await jsonBody(c, KbEntry);
+    if (entry.id !== idParam(c, "eid"))
+      throw new HttpError(400, "id_mismatch", "The id in the URL and the body differ.");
+    const kb = await saveUnlocked(app, s, entry);
+    changed(s);
+    return c.json({ kb });
+  });
+
   r.post(`/:pid/${segment}/:id/kb/entries/:eid/unlock`, async (c) => {
     const s = scope(c);
     const kb = await unlock(app, s, idParam(c, "eid"));
@@ -97,6 +110,12 @@ export function kbRoutes(app: AppContext, kind: "pair" | "book"): Hono {
     const kb = await answerQuestion(app, s, idParam(c, "eid"), body);
     changed(s);
     return c.json({ kb });
+  });
+
+  // A model's proposal for an open question; nothing is saved.
+  r.post(`/:pid/${segment}/:id/kb/entries/:eid/ask`, async (c) => {
+    const body = await jsonBody(c, z.object({ modelId: z.string() }));
+    return c.json(await askAboutEntry(app, scope(c), idParam(c, "eid"), body.modelId));
   });
 
   r.post(`/:pid/${segment}/:id/kb/style-rules`, async (c) => {

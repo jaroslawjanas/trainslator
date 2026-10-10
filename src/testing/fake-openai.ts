@@ -26,6 +26,8 @@ export interface FakeReply {
   breakMidStream?: boolean;
   /** Streaming: attach usage to the last content chunk (DeepSeek style) instead of a final chunk. */
   usageOnLastContentChunk?: boolean;
+  /** Function calls instead of (or besides) content; finish_reason becomes "tool_calls". */
+  toolCalls?: { id: string; name: string; arguments: string }[];
 }
 
 export type FakeHandler = (
@@ -83,7 +85,18 @@ export async function startFakeOpenAI(handler: FakeHandler): Promise<FakeServer>
       }
       const content = reply.content ?? "";
       const usage = reply.usage === undefined ? defaultUsage(body, content) : reply.usage;
-      const finish = reply.finishReason === undefined ? "stop" : reply.finishReason;
+      const toolCalls = reply.toolCalls ?? [];
+      const finish =
+        reply.finishReason !== undefined
+          ? reply.finishReason
+          : toolCalls.length > 0
+            ? "tool_calls"
+            : "stop";
+      const openAiCalls = toolCalls.map((t) => ({
+        id: t.id,
+        type: "function",
+        function: { name: t.name, arguments: t.arguments },
+      }));
       const model = String(body.model ?? "fake-model");
 
       if (!body.stream) {
@@ -100,6 +113,7 @@ export async function startFakeOpenAI(handler: FakeHandler): Promise<FakeServer>
                 content,
                 ...(reply.reasoning ? { reasoning_content: reply.reasoning } : {}),
                 ...(reply.refusal ? { refusal: reply.refusal } : {}),
+                ...(toolCalls.length > 0 ? { tool_calls: openAiCalls } : {}),
               },
               finish_reason: finish,
             },
@@ -133,6 +147,39 @@ export async function startFakeOpenAI(handler: FakeHandler): Promise<FakeServer>
               controller.enqueue(
                 chunk([{ index: 0, delta: { refusal: reply.refusal }, finish_reason: null }]),
               );
+            // Tool calls in pieces, as providers stream them: id and name, then the arguments.
+            for (const [index, t] of toolCalls.entries()) {
+              const half = Math.floor(t.arguments.length / 2);
+              controller.enqueue(
+                chunk([
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [
+                        {
+                          index,
+                          id: t.id,
+                          type: "function",
+                          function: { name: t.name, arguments: t.arguments.slice(0, half) },
+                        },
+                      ],
+                    },
+                    finish_reason: null,
+                  },
+                ]),
+              );
+              controller.enqueue(
+                chunk([
+                  {
+                    index: 0,
+                    delta: {
+                      tool_calls: [{ index, function: { arguments: t.arguments.slice(half) } }],
+                    },
+                    finish_reason: null,
+                  },
+                ]),
+              );
+            }
             for (let i = 0; i < pieces.length; i++) {
               if (reply.chunkDelayMs) await sleep(reply.chunkDelayMs);
               if (reply.breakMidStream && i === 1) {

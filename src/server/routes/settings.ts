@@ -2,7 +2,12 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { KIND_PRESETS } from "../../llm/presets.ts";
 import { listModels, testModel } from "../../llm/probe.ts";
-import { Connection, Model, StepSettingsMap } from "../../shared/schemas/settings.ts";
+import {
+  AdvisorSettings,
+  Connection,
+  Model,
+  StepSettingsMap,
+} from "../../shared/schemas/settings.ts";
 import { STEP_INFO } from "../../shared/steps.ts";
 import type { AppContext } from "../context.ts";
 import { HttpError, idParam, jsonBody } from "../http.ts";
@@ -68,6 +73,11 @@ export function settingsRoutes(app: AppContext): Hono {
         throw new HttpError(400, "unknown_model", "A step uses a model that doesn't exist.");
     }
     await app.settings.setSteps(body);
+    return c.json({ settings: app.settings.masked() });
+  });
+
+  r.put("/advisor", async (c) => {
+    await app.settings.setAdvisor(await jsonBody(c, AdvisorSettings));
     return c.json({ settings: app.settings.masked() });
   });
 

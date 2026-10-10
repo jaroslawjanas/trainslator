@@ -22,7 +22,19 @@ export interface KindPreset {
   notes: string;
 }
 
-const DEFAULT_LIMITS = { contextWindow: 128_000, maxOutputTokens: 16_000 };
+const DEFAULT_LIMITS = { contextWindow: 1_000_000, maxOutputTokens: 200_000 };
+
+/**
+ * Kinds that don't report how much a model thought (so the app can't learn
+ * it) and don't mind a high output limit get twice the default room for
+ * thinking. Anthropic doesn't report it either, but rejects limits above the
+ * model's real maximum.
+ */
+const DOUBLE_THINKING_ROOM = new Set<ConnectionKind>(["ollama", "ollama_cloud", "vllm", "custom"]);
+
+export function thinkingRoomFactor(kind: ConnectionKind): number {
+  return DOUBLE_THINKING_ROOM.has(kind) ? 2 : 1;
+}
 
 /**
  * Starting values per connection kind. Everything here can be changed per
@@ -128,7 +140,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       cacheMarkerTtl: "5m",
       sendPromptCacheKey: false,
     },
-    limits: { contextWindow: 1_000_000, maxOutputTokens: 64_000 },
+    limits: DEFAULT_LIMITS,
     notes:
       "Anthropic's own Messages API: JSON-schema output, prompt caching on the stable parts of each request, and adaptive thinking with an effort level (low, medium, high, xhigh or max). The base URL only changes for a proxy.",
   },
@@ -163,7 +175,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       sendTemperature: true,
       reasoningMode: "optional",
       reasoningTemplates: {
-        onEnabled: { think: true },
+        onEnabled: { think: "{{effort}}" },
         onDisabled: { think: false },
       },
       cacheMarkers: "none",
@@ -172,7 +184,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
     },
     limits: { contextWindow: 32_768, maxOutputTokens: 8_192 },
     notes:
-      "Ollama's own API. Trainslator asks Ollama for the model's context window (num_ctx), so long prompts aren't cut; Ollama needs memory to match, so set the context window to what your machine can handle. For gpt-oss models, change the 'reasoning on' template to {\"think\": \"{{effort}}\"}.",
+      "Ollama's own API. Trainslator asks Ollama for the model's context window (num_ctx), so long prompts aren't cut; Ollama needs memory to match, so set the context window to what your machine can handle. The reasoning effort is sent as Ollama's thinking level: low, medium or high (xhigh and max send high). Models without levels just think.",
   },
   ollama_cloud: {
     label: "Ollama Cloud",
@@ -184,7 +196,7 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
       sendTemperature: true,
       reasoningMode: "optional",
       reasoningTemplates: {
-        onEnabled: { think: true },
+        onEnabled: { think: "{{effort}}" },
         onDisabled: { think: false },
       },
       cacheMarkers: "none",
@@ -193,7 +205,26 @@ export const KIND_PRESETS: Record<ConnectionKind, KindPreset> = {
     },
     limits: DEFAULT_LIMITS,
     notes:
-      "Ollama's own API on ollama.com, with a key from ollama.com/settings/keys. Use the model names Ollama lists (e.g. gpt-oss:120b), without a :cloud suffix.",
+      "Ollama's own API on ollama.com, with a key from ollama.com/settings/keys. Use the model names Ollama lists (e.g. gpt-oss:120b), without a :cloud suffix. The reasoning effort is sent as Ollama's thinking level: low, medium or high (xhigh and max send high).",
+  },
+  claude_code: {
+    label: "Claude Code (your subscription)",
+    defaultBaseUrl: "claude",
+    suggestedKeyEnv: null,
+    model: {
+      // Claude Code checks the answer against the schema itself (--json-schema).
+      structuredOutput: "json_schema",
+      maxTokensParam: "max_tokens",
+      sendTemperature: false,
+      reasoningMode: "on_by_default",
+      reasoningTemplates: { onEnabled: { effort: "{{effort}}" }, onDisabled: { effort: "low" } },
+      cacheMarkers: "none",
+      cacheMarkerTtl: "5m",
+      sendPromptCacheKey: false,
+    },
+    limits: { contextWindow: 1_000_000, maxOutputTokens: 128_000 },
+    notes:
+      "Runs Claude Code on this computer (claude -p) with the Claude subscription you're logged in with, never an API key. It gets no tools and none of your Claude Code setup. Each request starts the program anew, so keep parallel requests low. The subscription's usage limits apply, and its requests count as $0. Models: opus, sonnet, haiku, fable, or a full name. Its models can be the advisor but can't ask it.",
   },
   custom: {
     label: "Other OpenAI-compatible API",

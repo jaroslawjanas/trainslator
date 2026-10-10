@@ -59,6 +59,8 @@ export interface ProjectDetail {
 }
 
 export interface UsageResponse {
+  /** When the counts were last reset; null when they cover every request. */
+  since: string | null;
   total: Usage;
   byStep: Record<string, Usage & { cacheHits: number }>;
   recent: {

@@ -23,6 +23,11 @@ import {
 import type { KindPreset } from "../../api/types.ts";
 import { newClientId } from "../../components/JsonField.tsx";
 
+/** Claude Code starts a program per request, so it runs fewer at once. */
+function defaultParallel(kind: ConnectionKind): number {
+  return kind === "claude_code" ? 2 : 4;
+}
+
 export function emptyConnection(kind: ConnectionKind, preset: KindPreset): Connection {
   return {
     id: newClientId("conn"),
@@ -33,7 +38,7 @@ export function emptyConnection(kind: ConnectionKind, preset: KindPreset): Conne
       ? { kind: "env", name: preset.suggestedKeyEnv }
       : { kind: "none" },
     headers: [],
-    maxParallel: null,
+    maxParallel: defaultParallel(kind),
     timeoutSec: 1800,
     idleTimeoutSec: 600,
     maxRetries: 4,
@@ -85,6 +90,7 @@ export function ConnectionModal({
   const set = (patch: Partial<Connection>) => setC((prev) => ({ ...prev, ...patch }));
   const preset = presets[c.kind];
   const isOllama = c.kind === "ollama" || c.kind === "ollama_cloud";
+  const isClaudeCode = c.kind === "claude_code";
 
   /** Switch kind; name, URL and key follow the new kind unless you changed them. */
   const switchKind = (kind: ConnectionKind) => {
@@ -104,6 +110,7 @@ export function ConnectionModal({
             ? { kind: "env", name: to.suggestedKeyEnv }
             : { kind: "none" }
           : c.apiKey,
+      maxParallel: isNew ? defaultParallel(kind) : c.maxParallel,
     });
   };
 
@@ -153,19 +160,21 @@ export function ConnectionModal({
           onChange={(e) => set({ name: e.currentTarget.value })}
         />
         <TextInput
-          label="Base URL"
+          label={isClaudeCode ? "Command" : "Base URL"}
           description={
-            BASE_URL_HINT[c.kind] ?? BASE_URL_HINT[protocolOf(c.kind)] ?? BASE_URL_HINT.openai
+            isClaudeCode
+              ? "How to start Claude Code: claude, or the full path to it if it isn't on your PATH."
+              : (BASE_URL_HINT[c.kind] ?? BASE_URL_HINT[protocolOf(c.kind)] ?? BASE_URL_HINT.openai)
           }
           value={c.baseUrl}
           onChange={(e) => set({ baseUrl: e.currentTarget.value })}
           error={
-            insecureRemote(c.baseUrl)
+            !isClaudeCode && insecureRemote(c.baseUrl)
               ? "This address uses http:// for a server on the internet. Hosted APIs need https://; over http the request is redirected and fails."
               : undefined
           }
         />
-        <Stack gap={6}>
+        <Stack gap={6} display={isClaudeCode ? "none" : undefined}>
           <Text size="sm" fw={500}>
             API key
           </Text>
@@ -206,7 +215,7 @@ export function ConnectionModal({
             />
           )}
         </Stack>
-        <Stack gap={6}>
+        <Stack gap={6} display={isClaudeCode ? "none" : undefined}>
           <Group justify="space-between">
             <Text size="sm" fw={500}>
               Extra headers
@@ -271,14 +280,16 @@ export function ConnectionModal({
         </Stack>
         <Group grow>
           <NumberInput
-            label="Max parallel (whole connection)"
-            description="Empty = only the per-model limits apply."
+            label="Max parallel requests"
+            description="How many requests run at once, across all its models. Your provider's rate limit."
             min={1}
-            value={c.maxParallel ?? ""}
-            onChange={(v) => set({ maxParallel: typeof v === "number" ? v : null })}
+            max={64}
+            value={c.maxParallel}
+            onChange={(v) => set({ maxParallel: Number(v) || 1 })}
           />
           <NumberInput
             label="Retries"
+            display={isClaudeCode ? "none" : undefined}
             min={0}
             max={10}
             value={c.maxRetries}

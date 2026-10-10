@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { IsoDate, SchemaVersion, Usage } from "./common.ts";
+import { Id, IsoDate, SchemaVersion, Usage } from "./common.ts";
 import { KbKind } from "./kb.ts";
+import { TranslationMode } from "./project.ts";
 
 export const UnitRole = z.enum([
   "heading",
@@ -125,6 +126,10 @@ export const ChunkResult = z.object({
   inputsHash: z.string(),
   promptVersion: z.number().int(),
   modelId: z.string(),
+  /** How the chunk was sent; null for results from before this was recorded. */
+  mode: TranslationMode.nullable().default(null),
+  /** Reasoning setting used: the effort, "on" (no effort given) or "off". */
+  reasoning: z.string().nullable().default(null),
   instruction: z.string().nullable(),
   finishedAt: IsoDate,
   usage: Usage,
@@ -169,3 +174,92 @@ export const TocTranslations = z.object({
   finishedAt: IsoDate,
 });
 export type TocTranslations = z.infer<typeof TocTranslations>;
+
+/** Where saved passages came from: model and settings, shared by many passages. */
+export const PassageOrigin = z.object({
+  modelId: z.string(),
+  mode: TranslationMode.nullable(),
+  reasoning: z.string().nullable(),
+});
+export type PassageOrigin = z.infer<typeof PassageOrigin>;
+
+/** Everything a saved translation holds, enough to restore it. */
+export const SavedTranslationContent = z.object({
+  schemaVersion: SchemaVersion,
+  id: Id,
+  origins: z.array(PassageOrigin),
+  /** By unit key; `origin` indexes `origins`. */
+  units: z.record(z.string(), UnitResult.omit({ key: true }).extend({ origin: z.number().int() })),
+  edits: ManualEdits.shape.edits,
+  toc: TocTranslations.nullable(),
+  glossary: z.array(GlossaryTerm),
+});
+export type SavedTranslationContent = z.infer<typeof SavedTranslationContent>;
+
+export const SaveReason = z.enum(["run", "redo", "restore", "build", "manual"]);
+export type SaveReason = z.infer<typeof SaveReason>;
+
+/** A saved translation as listed in the history. */
+export const SavedTranslation = z.object({
+  id: Id,
+  savedAt: IsoDate,
+  reason: SaveReason,
+  /** Same content, same hash: a translation is saved once. */
+  contentHash: z.string(),
+  modes: z.array(TranslationMode),
+  /** Model labels at the time of saving. */
+  models: z.array(z.string()),
+  reasoning: z.array(z.string()),
+  /** What the passages' latest translations cost. */
+  usage: Usage,
+  counts: z.object({
+    units: z.number().int(),
+    ok: z.number().int(),
+    flagged: z.number().int(),
+    refused: z.number().int(),
+    pending: z.number().int(),
+    edited: z.number().int(),
+  }),
+});
+export type SavedTranslation = z.infer<typeof SavedTranslation>;
+
+export const SavedBuild = z.object({
+  id: Id,
+  builtAt: IsoDate,
+  fileName: z.string(),
+  bytes: z.number().int(),
+  /** The saved translation it was built from. */
+  translationId: Id.nullable(),
+  useBestAttempts: z.boolean(),
+  flaggedUsed: z.number().int(),
+  keptSource: z.number().int(),
+});
+export type SavedBuild = z.infer<typeof SavedBuild>;
+
+/** A saved copy of the book's knowledge base with phase 2's chapter notes. */
+export const SavedKnowledge = z.object({
+  id: Id,
+  savedAt: IsoDate,
+  reason: z.enum(["rebuild", "restore"]),
+  contentHash: z.string(),
+  entries: z.number().int(),
+  open: z.number().int(),
+  /** Entries you set or answered. */
+  locked: z.number().int(),
+  /** Phase 2 as it stood, restored with the copy. */
+  phase2: z.object({
+    state: z.string(),
+    finishedAt: IsoDate.nullable(),
+    stepsDone: z.number().int(),
+  }),
+});
+export type SavedKnowledge = z.infer<typeof SavedKnowledge>;
+
+/** Every saved translation, build and knowledge base of a book, oldest first. */
+export const BookHistory = z.object({
+  schemaVersion: SchemaVersion,
+  translations: z.array(SavedTranslation),
+  builds: z.array(SavedBuild),
+  knowledgeBases: z.array(SavedKnowledge).default([]),
+});
+export type BookHistory = z.infer<typeof BookHistory>;

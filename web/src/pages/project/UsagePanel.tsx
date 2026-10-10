@@ -1,9 +1,11 @@
-import { Alert, Box, Loader, SimpleGrid, Table, Text } from "@mantine/core";
-import { useQuery } from "@tanstack/react-query";
+import { Alert, Box, Button, Loader, SimpleGrid, Table, Text } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { STEP_INFO, type Step } from "../../../../src/shared/steps.ts";
-import { get } from "../../api/client.ts";
+import { get, post } from "../../api/client.ts";
 import type { Project, Usage, UsageResponse } from "../../api/types.ts";
 import { PageHeader, Section } from "../../components/PageHeader.tsx";
+import { formatDate } from "../../lib/format.ts";
 
 function fmt(n: number): string {
   return Math.round(n).toLocaleString();
@@ -27,17 +29,52 @@ function Stat({ value, label }: { value: string; label: string }) {
 }
 
 export function UsagePanel({ project }: { project: Project }) {
+  const client = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["project", project.id, "usage"],
     queryFn: () => get<UsageResponse>(`/api/usage/${project.id}`),
   });
+  const reset = async () => {
+    if (
+      !window.confirm(
+        "Start the usage counts from zero? Requests sent so far are no longer counted here.",
+      )
+    )
+      return;
+    try {
+      await post(`/api/usage/${project.id}/reset`);
+      void client.invalidateQueries({ queryKey: ["project", project.id, "usage"] });
+    } catch (e) {
+      notifications.show({
+        color: "red",
+        title: "Couldn't reset the usage",
+        message: (e as Error).message,
+      });
+    }
+  };
   return (
     <>
       <PageHeader
         context={project.name}
         contextTo={`/projects/${project.id}`}
         title="Usage"
-        description="Every request this project sent to an AI model, with the tokens it used. Cached tokens are parts of the prompt the provider had already seen and usually charges less for."
+        description={
+          <>
+            Every request this project sent to an AI model
+            {data?.since ? ` since ${formatDate(data.since)}` : ""}, with the tokens it used. Cached
+            tokens are parts of the prompt the provider had already seen and usually charges less
+            for.
+          </>
+        }
+        actions={
+          <Button
+            variant="default"
+            onClick={reset}
+            disabled={!data || (data.total.calls === 0 && data.recent.length === 0)}
+          >
+            Reset usage
+          </Button>
+        }
       />
       {isLoading && <Loader size="sm" />}
       {error && <Alert color="red">{(error as Error).message}</Alert>}
@@ -75,7 +112,9 @@ export function UsagePanel({ project }: { project: Project }) {
                 <Table.Tbody>
                   {Object.entries(data.byStep).map(([step, u]) => (
                     <Table.Tr key={step}>
-                      <Table.Td>{STEP_INFO[step as Step]?.label ?? step}</Table.Td>
+                      <Table.Td>
+                        {STEP_INFO[step as Step]?.label ?? (step === "advisor" ? "Advisor" : step)}
+                      </Table.Td>
                       <Table.Td ta="right">
                         {fmt(u.calls)}
                         {u.cacheHits > 0 && (

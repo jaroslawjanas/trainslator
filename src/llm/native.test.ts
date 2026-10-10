@@ -117,14 +117,18 @@ describe("Ollama's own API", () => {
         res.write(tail.slice(0, 10));
         res.write(`${tail.slice(10)}\n`);
         res.end(
-          `${JSON.stringify({ model: "fake-model", message: { role: "assistant", content: "" }, done: true, done_reason: "stop", prompt_eval_count: 42, eval_count: 17 })}\n`,
+          `${JSON.stringify({ model: "fake-model", message: { role: "assistant", content: "" }, done: true, done_reason: "stop", prompt_eval_count: 42, prompt_eval_cached_count: 30, eval_count: 17 })}\n`,
         );
       },
       true,
     );
     const result = await call();
     expect(result.value.items[0]!.text).toBe("Dzień dobry");
-    expect(result.usage).toMatchObject({ promptTokens: 42, completionTokens: 17 });
+    expect(result.usage).toMatchObject({
+      promptTokens: 42,
+      cachedTokens: 30,
+      completionTokens: 17,
+    });
     const req = seen[0]!;
     expect(req.path).toBe("/api/chat");
     expect(req.headers.authorization).toBe("Bearer test-key");
@@ -136,14 +140,43 @@ describe("Ollama's own API", () => {
     });
   });
 
-  it("reports Ollama's errors with their message, without retrying them", async () => {
+  it("falls back to plain thinking for a model that refuses thinking levels", async () => {
+    await setup("ollama_cloud", (req, res) =>
+      typeof req.body.think === "string"
+        ? json(res, 400, {
+            error: `think value "${req.body.think}" is not supported for this model`,
+          })
+        : json(res, 200, {
+            model: "fake-model",
+            message: { role: "assistant", content: VALID },
+            done: true,
+            done_reason: "stop",
+          }),
+    );
+    const effortStep = makeStep({
+      reasoning: { enabled: true, effort: "high", budgetTokens: null },
+    });
+    const target = () => ({
+      connection: env!.settings.connections[0]!,
+      model: env!.settings.models[0]!,
+      step: effortStep,
+    });
+    expect((await callStructured(env!.rt, target(), spec())).value.items).toHaveLength(1);
+    expect(seen.map((s) => s.body.think)).toEqual(["high", true]);
+    // Remembered: the next request goes straight to plain thinking.
+    await callStructured(env!.rt, target(), spec());
+    expect(seen.map((s) => s.body.think)).toEqual(["high", true, true]);
+  });
+
+  it("stops at once when the model or address doesn't exist, with Ollama's message", async () => {
     await setup("ollama", (_req, res) =>
       json(res, 404, { error: "model 'fake-model' not found, try pulling it first" }),
     );
     const error = await call().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(LlmError);
-    expect(error).toMatchObject({ kind: "bad_request" });
-    expect((error as LlmError).message).toContain("not found");
+    expect(error).toMatchObject({ kind: "config" });
+    expect((error as LlmError).message).toContain("404");
+    expect((error as LlmError).message).toContain("not found, try pulling it first");
     expect(seen).toHaveLength(1);
   });
 
@@ -317,6 +350,85 @@ describe("Anthropic's Messages API", () => {
       contextWindow: 1_000_000,
       maxOutputTokens: 128_000,
       pricing: { inputPerM: 4, outputPerM: 20 },
+    });
+  });
+});
+
+describe("consulting the advisor through the native APIs", () => {
+  const QUESTION = "Should the name Mira stay as it is?";
+  const ADVICE = "Keep it.";
+
+  /** The executor and the advisor (another model on the same connection). */
+  function callWithAdvisor() {
+    const connection = env!.settings.connections[0]!;
+    const kind = connection.kind;
+    return callStructured(
+      env!.rt,
+      {
+        connection,
+        model: env!.settings.models[0]!,
+        step: makeStep(),
+        advisor: {
+          connection,
+          model: makeModel(kind, { id: "advisor1", modelName: "advisor-model" }),
+          step: makeStep({ modelId: "advisor1" }),
+          maxConsultations: 2,
+        },
+      },
+      spec(),
+    );
+  }
+  const isAdvisor = (req: Seen) => String(req.body.model).startsWith("advisor-model");
+  const roles = (req: Seen) => (req.body.messages as { role: string }[]).map((m) => m.role);
+
+  it("round-trips Ollama's tool calls", async () => {
+    await setup("ollama", (req, res) => {
+      const done = { done: true, done_reason: "stop", prompt_eval_count: 5, eval_count: 5 };
+      if (isAdvisor(req))
+        return json(res, 200, { message: { role: "assistant", content: ADVICE }, ...done });
+      if (!roles(req).includes("tool"))
+        return json(res, 200, {
+          message: {
+            role: "assistant",
+            content: "",
+            tool_calls: [{ function: { name: "ask_advisor", arguments: { question: QUESTION } } }],
+          },
+          ...done,
+        });
+      return json(res, 200, { message: { role: "assistant", content: VALID }, ...done });
+    });
+    const result = await callWithAdvisor();
+    expect(result.value.items[0]!.text).toBe("Dzień dobry");
+    const last = seen.at(-1)!.body.messages as Record<string, unknown>[];
+    expect(last.at(-2)).toMatchObject({
+      role: "assistant",
+      tool_calls: [{ function: { name: "ask_advisor", arguments: { question: QUESTION } } }],
+    });
+    expect(last.at(-1)).toEqual({ role: "tool", content: ADVICE, tool_name: "ask_advisor" });
+    expect((seen.find(isAdvisor)!.body.messages as { content: string }[])[1]!.content).toBe(
+      `${QUESTION}\n\n`,
+    );
+  });
+
+  it("round-trips Anthropic's tool use, sending the whole answer back", async () => {
+    const asked = [
+      { type: "thinking", thinking: "Unsure about the name.", signature: "sig" },
+      { type: "tool_use", id: "toolu_1", name: "ask_advisor", input: { question: QUESTION } },
+    ];
+    await setup("anthropic", (req, res) => {
+      if (isAdvisor(req)) return json(res, 200, message([{ type: "text", text: ADVICE }]));
+      const turns = req.body.messages as { role: string; content: unknown }[];
+      if (turns.length === 1) return json(res, 200, message(asked, { stop_reason: "tool_use" }));
+      return json(res, 200, message([{ type: "text", text: VALID }]));
+    });
+    const result = await callWithAdvisor();
+    expect(result.value.items[0]!.text).toBe("Dzień dobry");
+    const last = seen.at(-1)!.body.messages as { role: string; content: unknown }[];
+    // Thinking goes back with its signature, as Anthropic requires.
+    expect(last.at(-2)).toEqual({ role: "assistant", content: asked });
+    expect(last.at(-1)).toEqual({
+      role: "user",
+      content: [{ type: "tool_result", tool_use_id: "toolu_1", content: ADVICE }],
     });
   });
 });

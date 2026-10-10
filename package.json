@@ -10,7 +10,7 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"pnpm dev:server\" \"pnpm dev:web\"",
-    "dev:server": "node --watch --env-file-if-exists=.env src/server/main.ts",
+    "dev:server": "node scripts/dev-server.ts",
     "dev:web": "vite",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env src/server/main.ts",

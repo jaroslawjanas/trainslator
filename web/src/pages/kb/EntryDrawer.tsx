@@ -11,24 +11,142 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { IconX } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { KB_KINDS, KB_TREATMENTS, type KbEntry } from "../../../../src/shared/schemas/kb.ts";
+import { useSettings } from "../SettingsPage.tsx";
+
+/** A model's proposal for an open question. */
+export interface KbAnswer {
+  target: string | null;
+  treatment: KbEntry["treatment"];
+  attributes: { key: string; value: string }[];
+  note: string;
+  explanation: string;
+}
+
+/** Ask a model about an open question: the advisor's model by default. */
+function AskModel({
+  e,
+  onAsk,
+  onUse,
+}: {
+  e: KbEntry;
+  onAsk: (e: KbEntry, modelId: string) => Promise<KbAnswer>;
+  onUse: (answer: KbAnswer) => void;
+}) {
+  const settings = useSettings();
+  const s = settings.data?.settings;
+  const advisorId = s?.advisor.modelId ?? null;
+  const [modelId, setModelId] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<KbAnswer | null>(null);
+  useEffect(() => {
+    if (!modelId && s)
+      setModelId(
+        advisorId ??
+          s.steps["phase2.review"].modelId ??
+          s.steps["phase2.chapter"].modelId ??
+          s.models[0]?.id ??
+          null,
+      );
+  }, [modelId, s, advisorId]);
+  // A new entry starts without an answer.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the entry changes
+  useEffect(() => setAnswer(null), [e.id]);
+  const models = (s?.models ?? []).map((m) => ({
+    value: m.id,
+    label: `${m.label || m.modelName}${m.id === advisorId ? " (advisor)" : ""}`,
+  }));
+  const label = models.find((m) => m.value === modelId)?.label ?? "The model";
+  const ask = async () => {
+    if (!modelId) return;
+    setAsking(true);
+    setAnswer(null);
+    try {
+      setAnswer(await onAsk(e, modelId));
+    } catch (err) {
+      notifications.show({
+        color: "red",
+        title: "Couldn't get an answer",
+        message: (err as Error).message,
+      });
+    } finally {
+      setAsking(false);
+    }
+  };
+  return (
+    <>
+      <Group mt="sm" gap="xs" wrap="nowrap">
+        <Select
+          size="xs"
+          aria-label="Model to ask"
+          data={models}
+          value={modelId}
+          onChange={setModelId}
+          allowDeselect={false}
+          style={{ flex: 1 }}
+        />
+        <Button size="xs" variant="default" loading={asking} disabled={!modelId} onClick={ask}>
+          Ask
+        </Button>
+      </Group>
+      {answer && (
+        <Stack gap={4} mt="md">
+          <Text size="sm" fw={600}>
+            {label.replace(/ \(advisor\)$/, "")} suggests
+          </Text>
+          <Text size="sm">{answer.explanation}</Text>
+          <Text size="sm">
+            Translation: {answer.target ?? "undecided"}
+            {answer.treatment ? ` (${answer.treatment})` : ""}
+          </Text>
+          {answer.attributes.length > 0 && (
+            <Text size="sm">
+              Facts: {answer.attributes.map((a) => `${a.key}: ${a.value}`).join("; ")}
+            </Text>
+          )}
+          {answer.note && <Text size="sm">Note: {answer.note}</Text>}
+          <Group gap="xs" mt={6}>
+            <Button
+              size="xs"
+              onClick={() => {
+                onUse(answer);
+                setAnswer(null);
+              }}
+            >
+              Use this answer
+            </Button>
+            <Button size="xs" variant="default" onClick={() => setAnswer(null)}>
+              Discard
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </>
+  );
+}
 
 export function EntryDrawer({
   entry,
   isNew,
   onClose,
   onSave,
+  onSaveUnlocked,
   onUnlock,
   onDelete,
+  onAsk,
 }: {
   entry: KbEntry | null;
   isNew: boolean;
   onClose: () => void;
   onSave: (e: KbEntry) => Promise<void>;
+  /** Save without locking: later runs may still change the entry. */
+  onSaveUnlocked: (e: KbEntry) => Promise<void>;
   onUnlock: (e: KbEntry) => Promise<void>;
   onDelete: (e: KbEntry) => Promise<void>;
+  onAsk: (e: KbEntry, modelId: string) => Promise<KbAnswer>;
 }) {
   const [e, setE] = useState<KbEntry | null>(entry);
   const [busy, setBusy] = useState(false);
@@ -69,11 +187,27 @@ export function EntryDrawer({
         {e.status === "open" && e.question && (
           <Alert color="yellow" title="Open question">
             {e.question}
+            {!isNew && (
+              <AskModel
+                e={e}
+                onAsk={onAsk}
+                onUse={(a) =>
+                  set({
+                    target: a.target,
+                    treatment: a.treatment,
+                    attributes: a.attributes,
+                    note: a.note,
+                  })
+                }
+              />
+            )}
           </Alert>
         )}
         {e.status !== "locked" && (
           <Text size="xs" c="dimmed">
-            Saving locks the entry: later runs keep it exactly as you set it.
+            {isNew
+              ? "Saving locks the entry: later runs keep it exactly as you set it."
+              : "Locked, the entry stays exactly as you set it when phases run again. Without locking, they may still change it."}
           </Text>
         )}
         <Group grow>
@@ -208,6 +342,16 @@ export function EntryDrawer({
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
+            {!isNew && e.status !== "locked" && (
+              <Button
+                variant="default"
+                loading={busy}
+                disabled={!e.source.trim()}
+                onClick={() => act(() => onSaveUnlocked(e))}
+              >
+                Save without locking
+              </Button>
+            )}
             <Button loading={busy} disabled={!e.source.trim()} onClick={() => act(() => onSave(e))}>
               {e.status === "open" ? "Answer and lock" : "Save and lock"}
             </Button>

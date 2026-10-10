@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Pricing } from "../shared/schemas/settings.ts";
-import { LlmError } from "./errors.ts";
+import { LlmError, wrongAddressError } from "./errors.ts";
 import type { RawResult } from "./response.ts";
 import type { Watch } from "./watch.ts";
 
@@ -47,6 +47,8 @@ function finishReason(stop: Anthropic.StopReason | null): string | null {
       return "length";
     case "refusal":
       return "content_filter";
+    case "tool_use":
+      return "tool_calls";
     default:
       return "stop";
   }
@@ -55,9 +57,12 @@ function finishReason(stop: Anthropic.StopReason | null): string | null {
 export function fromMessage(message: Anthropic.Message): RawResult {
   let content = "";
   let reasoning = "";
+  const toolCalls: RawResult["toolCalls"] = [];
   for (const block of message.content) {
     if (block.type === "text") content += block.text;
     else if (block.type === "thinking") reasoning += block.thinking;
+    else if (block.type === "tool_use")
+      toolCalls.push({ id: block.id, name: block.name, arguments: JSON.stringify(block.input) });
   }
   const u = message.usage;
   const cacheRead = u.cache_read_input_tokens ?? 0;
@@ -80,6 +85,9 @@ export function fromMessage(message: Anthropic.Message): RawResult {
       cost: null,
     },
     model: message.model,
+    toolCalls,
+    // Sent back whole: thinking blocks must come back with their signatures.
+    replay: toolCalls.length > 0 ? { role: "assistant", content: message.content } : undefined,
   };
 }
 
@@ -99,9 +107,11 @@ function classify(error: unknown): unknown {
       status: error.status,
       cause: error,
     });
+  if (error instanceof Anthropic.NotFoundError) return wrongAddressError(404, error.message, error);
+  if (error instanceof Anthropic.APIError && error.status === 405)
+    return wrongAddressError(405, error.message, error);
   if (
     error instanceof Anthropic.BadRequestError ||
-    error instanceof Anthropic.NotFoundError ||
     error instanceof Anthropic.UnprocessableEntityError
   )
     return new LlmError("bad_request", `Anthropic rejected the request: ${error.message}`, {
@@ -124,7 +134,7 @@ export async function sendAnthropic(
   client: Anthropic,
   body: Record<string, unknown>,
   watch: Watch,
-  options: { maxRetries: number; timeoutMs: number },
+  options: { maxRetries: number; timeoutMs: number; onText?: (chars: number) => void },
 ): Promise<RawResult> {
   const { stream, ...params } = body;
   const requestOptions = {
@@ -139,7 +149,19 @@ export async function sendAnthropic(
         params as unknown as Anthropic.MessageStreamParams,
         requestOptions,
       );
-      for await (const _event of messageStream) watch.activity();
+      for await (const event of messageStream) {
+        watch.activity();
+        if (options.onText && event.type === "content_block_delta") {
+          const d = event.delta;
+          const chars =
+            d.type === "text_delta"
+              ? d.text.length
+              : d.type === "thinking_delta"
+                ? d.thinking.length
+                : 0;
+          if (chars > 0) options.onText(chars);
+        }
+      }
       return fromMessage(await messageStream.finalMessage());
     }
     const message = await client.messages.create(

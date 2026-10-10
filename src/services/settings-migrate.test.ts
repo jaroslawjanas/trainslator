@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { KIND_PRESETS } from "../llm/presets.ts";
 import { defaultSettings, type Settings } from "../shared/schemas/settings.ts";
 import { makeConnection, makeModel } from "../testing/llm-fixtures.ts";
-import { migrateSettings } from "./settings-migrate.ts";
+import { migrateRawSettings, migrateSettings } from "./settings-migrate.ts";
 
 const oldOllama = {
   onEnabled: { reasoning_effort: "{{effort}}" },
@@ -56,6 +56,42 @@ describe("settings migration", () => {
     expect(next.models[2]).toMatchObject(KIND_PRESETS.anthropic.model);
     // The stored key is untouched.
     expect(next.connections[0]!.apiKey).toEqual(s.connections[0]!.apiKey);
+  });
+
+  it("lets saved Ollama models send the effort as a thinking level", () => {
+    const s = settings({
+      connections: [makeConnection("https://ollama.com", { id: "c1", kind: "ollama_cloud" })],
+      models: [
+        makeModel("ollama_cloud", {
+          id: "m1",
+          connectionId: "c1",
+          reasoningTemplates: { onEnabled: { think: true }, onDisabled: { think: false } },
+        }),
+      ],
+    });
+    expect(migrateSettings(s)!.models[0]!.reasoningTemplates).toEqual({
+      onEnabled: { think: "{{effort}}" },
+      onDisabled: { think: false },
+    });
+  });
+
+  it("moves parallel limits from models to their connection", () => {
+    const raw = {
+      connections: [
+        { id: "c1", maxParallel: null },
+        { id: "c2", maxParallel: 3 },
+        { id: "c3", maxParallel: null },
+      ],
+      models: [
+        { id: "m1", connectionId: "c1", maxParallel: 3 },
+        { id: "m2", connectionId: "c1", maxParallel: 6 },
+        { id: "m3", connectionId: "c2", maxParallel: 8 },
+      ],
+    };
+    const next = migrateRawSettings(raw) as typeof raw;
+    // No cap: the highest model limit. A cap: kept. No models: the default.
+    expect(next.connections.map((c) => c.maxParallel)).toEqual([6, 3, 4]);
+    expect(next.models.every((m) => !("maxParallel" in m))).toBe(true);
   });
 
   it("changes nothing in settings that are already current", () => {

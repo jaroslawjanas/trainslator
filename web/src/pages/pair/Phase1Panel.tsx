@@ -4,10 +4,12 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
-import { estimateText, RunPanel } from "../../components/RunPanel.tsx";
+import { ModelNote } from "../../components/ModelNote.tsx";
+import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { plural } from "../../lib/format.ts";
 import { useSettings } from "../SettingsPage.tsx";
 import type { PairDetail } from "./AlignmentPanel.tsx";
+import { Phase1Chapters } from "./Phase1Chapters.tsx";
 
 interface Estimate {
   units: number;
@@ -80,18 +82,22 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
                 input: estimate.data.inputTokens,
                 output: estimate.data.outputTokens,
                 pricing: readModel?.pricing,
+                subscription: onSubscription(settings.data?.settings, readModel?.id),
               })}`
             : undefined
         }
         actionLabel={phase1.state === "none" ? "Learn from this pair" : "Learn again"}
         disabled={!confirmed}
         onRun={run}
-      />
-      <Text size="sm" c="dimmed" maw={720}>
-        Chapter pairs run in parallel with the model chosen for "Phase 1: read chapters"; the
-        findings are merged with the one for "Phase 1: merge findings". Chapters already read are
-        reused when you run it again, and your edits to the knowledge base are kept.
+      >
+        <ModelNote steps={["phase1.read", "phase1.merge"]} />
+      </RunPanel>
+      <Text size="sm" c="dimmed" maw={720} mb={40}>
+        Chapter pairs are read in parallel, then their findings are merged into one knowledge base.
+        Chapters already read are reused when you run it again, and your edits to the knowledge base
+        are kept.
       </Text>
+      {confirmed && <Phase1Chapters pid={pid} pairId={pairId} job={job} />}
     </>
   );
 }

@@ -164,9 +164,11 @@ function allowsNull(node: unknown): boolean {
 }
 
 /**
- * Adds null for keys a reply left out where the schema allows null. Models
- * without enforced structured output often skip keys they consider empty.
- * Returns a copy; values that don't fit the schema are left for validation.
+ * Fills in keys a reply left out: null where the schema allows null, an
+ * empty list where it expects a list. Models without enforced structured
+ * output often skip keys they consider empty, and asking again would mean
+ * re-generating the whole answer. Returns a copy; values that don't fit the
+ * schema are left for validation.
  */
 export function fillMissingNulls(value: unknown, schema: unknown): unknown {
   if (!isObject(schema)) return value;
@@ -188,6 +190,7 @@ export function fillMissingNulls(value: unknown, schema: unknown): unknown {
     for (const [key, sub] of Object.entries(props)) {
       if (key in out) out[key] = fillMissingNulls(out[key], sub);
       else if (allowsNull(sub)) out[key] = null;
+      else if (isObject(sub) && sub.type === "array") out[key] = [];
     }
     return out;
   }

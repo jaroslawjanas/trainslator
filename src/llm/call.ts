@@ -20,20 +20,31 @@ import {
 } from "../shared/schemas/settings.ts";
 import type { Step } from "../shared/steps.ts";
 import type { DataPaths } from "../store/paths.ts";
+import { type ActivityRegistry, currentJobId } from "./activity.ts";
+import {
+  ADVISOR_TOOL,
+  type AdvisorTarget,
+  advisorTool,
+  consultAdvisor,
+  questionOf,
+} from "./advisor.ts";
 import { sendAnthropic } from "./anthropic.ts";
 import type { ResponseCache } from "./cache.ts";
 import type { CalibrationStore } from "./calibration.ts";
+import { sendClaudeCode } from "./claude-code.ts";
 import type { ClientPool } from "./client.ts";
-import { LlmError } from "./errors.ts";
+import { LlmError, wrongAddressError } from "./errors.ts";
 import type { Lane, Limiter } from "./limiter.ts";
 import { type CallLog, costOf } from "./log.ts";
 import { sendOllama } from "./ollama.ts";
+import { thinkingRoomFactor } from "./presets.ts";
 import {
   bodyOutputLimit,
   buildRequestBody,
   outputLimit,
   type PromptBlock,
   type RequestPlan,
+  type ToolResult,
 } from "./request.ts";
 import {
   jsonCandidates,
@@ -54,6 +65,8 @@ import { Watch } from "./watch.ts";
 /** Everything the LLM layer needs, shared by all jobs. */
 export interface LlmRuntime {
   paths: DataPaths;
+  /** Requests waiting and running per job, and recent finished ones. */
+  activity: ActivityRegistry;
   clients: ClientPool;
   limiter: Limiter;
   calibration: CalibrationStore;
@@ -67,6 +80,8 @@ export interface CallTarget {
   connection: Connection;
   model: Model;
   step: StepSettings;
+  /** The advisor the model may consult; none when the step may not. */
+  advisor?: AdvisorTarget | null;
 }
 
 export interface CallSpec<T> {
@@ -149,7 +164,7 @@ function requestHash(connection: Connection, body: Record<string, unknown>): str
   return hash(JSON.stringify([connection.baseUrl, headers, rest]));
 }
 
-function usageFrom(
+export function usageFrom(
   raw: NormalizedUsage | null,
   model: Model,
   promptEstimate: number,
@@ -227,11 +242,10 @@ export function classifyError(
       cause: error,
     });
   }
-  if (
-    error instanceof BadRequestError ||
-    error instanceof NotFoundError ||
-    error instanceof UnprocessableEntityError
-  ) {
+  if (error instanceof NotFoundError) return wrongAddressError(404, error.message, error);
+  if (error instanceof APIError && error.status === 405)
+    return wrongAddressError(405, error.message, error);
+  if (error instanceof BadRequestError || error instanceof UnprocessableEntityError) {
     return new LlmError("bad_request", `The provider rejected the request: ${error.message}`, {
       status: error.status,
       cause: error,
@@ -268,6 +282,7 @@ export async function send(
   connection: Connection,
   body: Record<string, unknown>,
   signal: AbortSignal | undefined,
+  onText?: (chars: number) => void,
 ): Promise<RawResult> {
   const watch = new Watch(connection, signal);
   try {
@@ -277,10 +292,13 @@ export async function send(
         ? await sendAnthropic(rt.clients.anthropic(connection), body, watch, {
             maxRetries: connection.maxRetries,
             timeoutMs: connection.timeoutSec * 1000,
+            onText,
           })
         : protocol === "ollama"
-          ? await sendOllama(connection, body, watch)
-          : await sendChatCompletions(rt, connection, body, watch);
+          ? await sendOllama(connection, body, watch, onText)
+          : protocol === "claude_code"
+            ? await sendClaudeCode(connection, body, watch, onText)
+            : await sendChatCompletions(rt, connection, body, watch, onText);
     // An aborted stream can end quietly instead of throwing.
     if (watch.timedOut) throw new LlmError("transport", watch.timedOut);
     if (signal?.aborted) throw new LlmError("aborted", "Cancelled");
@@ -298,6 +316,7 @@ async function sendChatCompletions(
   connection: Connection,
   body: Record<string, unknown>,
   watch: Watch,
+  onText?: (chars: number) => void,
 ): Promise<RawResult> {
   const client = rt.clients.get(connection);
   const options = {
@@ -311,13 +330,37 @@ async function sendChatCompletions(
       body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream: true },
       options,
     );
-    return readStream(stream as AsyncIterable<unknown>, () => watch.activity());
+    return withReplay(
+      connection,
+      await readStream(stream as AsyncIterable<unknown>, () => watch.activity(), onText),
+    );
   }
   const completion = await client.chat.completions.create(
     body as unknown as Parameters<typeof client.chat.completions.create>[0] & { stream?: false },
     options,
   );
-  return readCompletion(completion);
+  return withReplay(connection, readCompletion(completion));
+}
+
+/** The assistant message with its tool calls, to send back in the next turn. */
+function withReplay(connection: Connection, raw: RawResult): RawResult {
+  if (!raw.toolCalls?.length) return raw;
+  return {
+    ...raw,
+    replay: {
+      role: "assistant",
+      content: raw.content || null,
+      tool_calls: raw.toolCalls.map((t) => ({
+        id: t.id,
+        type: "function",
+        function: { name: t.name, arguments: t.arguments },
+      })),
+      // DeepSeek wants the reasoning of a tool-calling turn back.
+      ...(connection.kind === "deepseek" && raw.reasoning
+        ? { reasoning_content: raw.reasoning }
+        : {}),
+    },
+  };
 }
 
 interface Picked<T> {
@@ -381,14 +424,17 @@ export async function callStructured<T>(
     budgetTokens: step.reasoning.budgetTokens,
     mode: model.reasoningMode,
     samples: rt.calibration.reasoningSamples(model.id, spec.step),
+    factor: thinkingRoomFactor(connection.kind),
   });
+  const advisor = target.advisor ?? null;
   let plan: RequestPlan = {
     blocks: spec.blocks,
     schemaName: spec.schemaName,
     jsonSchema,
     answerBudget: spec.answerBudget,
     reasoningAllowance: allowance,
-    repair: [],
+    turns: [],
+    tools: advisor ? [advisorTool(advisor.maxConsultations)] : undefined,
     promptCacheKey: spec.promptCacheKey ?? null,
   };
 
@@ -396,11 +442,12 @@ export async function callStructured<T>(
   const schemaText = describeSchema(jsonSchema);
   const rawEstimate = estimateTokens(spec.blocks.map((b) => b.text).join("\n") + schemaText);
   const promptEstimate = Math.ceil(rawEstimate * factor);
-  const limit = outputLimit(model, step, plan);
-  if (promptEstimate + limit > model.contextWindow) {
+  plan.contextRoom = model.contextWindow - promptEstimate;
+  const answerRoom = Math.min(spec.answerBudget, answerCap(target));
+  if (plan.contextRoom < answerRoom) {
     throw new LlmError(
       "context_overflow",
-      `The prompt (about ${promptEstimate.toLocaleString("en")} tokens) plus room for the answer (${limit.toLocaleString("en")}) doesn't fit ${model.label}'s context window (${model.contextWindow.toLocaleString("en")} tokens).`,
+      `The prompt (about ${promptEstimate.toLocaleString("en")} tokens) plus room for the answer (${answerRoom.toLocaleString("en")}) doesn't fit ${model.label}'s context window (${model.contextWindow.toLocaleString("en")} tokens).`,
     );
   }
   const blockTokens = spec.blocks.map((b) => ({
@@ -421,6 +468,7 @@ export async function callStructured<T>(
           id: `call_${randomUUID().replaceAll("-", "").slice(0, 16)}`,
           at: new Date().toISOString(),
           projectId: spec.projectId,
+          jobId: currentJobId(),
           step: spec.step,
           label: spec.label,
           modelId: model.id,
@@ -432,6 +480,7 @@ export async function callStructured<T>(
           params: {},
           finishReason: "stop",
           latencyMs: 0,
+          waitMs: 0,
           usage: emptyUsage(),
           error: null,
         });
@@ -453,6 +502,8 @@ export async function callStructured<T>(
   let rateWaits = 0;
   let refusalRetried = false;
   let reasoningRetried = false;
+  let consultations = 0;
+  let toolRounds = 0;
   const waits = {
     rateLimitMs: rt.waits?.rateLimitMs ?? 60_000,
     transportMs: rt.waits?.transportMs ?? 3000,
@@ -462,12 +513,39 @@ export async function callStructured<T>(
     if (spec.signal?.aborted) throw new LlmError("aborted", "Cancelled");
     attempts++;
     const body = buildRequestBody(connection, model, step, plan, connection.stream);
-    const started = Date.now();
+    const queued = Date.now();
     const callId = `call_${randomUUID().replaceAll("-", "").slice(0, 16)}`;
+    const jobId = currentJobId();
+    const activity = rt.activity.begin({
+      id: callId,
+      jobId,
+      projectId: spec.projectId,
+      step: spec.step,
+      label: spec.label,
+      modelName: model.modelName,
+      reasoning: { enabled: step.reasoning.enabled, effort: step.reasoning.effort },
+      attempt: attempts,
+      queuedAt: new Date(queued).toISOString(),
+    });
+    let release: () => void;
+    try {
+      release = await rt.limiter
+        .acquire(connection.id, spec.lane ?? "normal", spec.signal)
+        .catch((error: Error) => {
+          throw error.name === "AbortError" ? new LlmError("aborted", "Cancelled") : error;
+        });
+    } catch (error) {
+      activity.end();
+      throw error;
+    }
+    activity.sent();
+    const started = Date.now();
     const logBase = {
       id: callId,
       at: new Date(started).toISOString(),
       projectId: spec.projectId,
+      jobId,
+      waitMs: started - queued,
       step: spec.step,
       label: spec.label,
       modelId: model.id,
@@ -480,29 +558,34 @@ export async function callStructured<T>(
         maxTokens: bodyOutputLimit(body),
         reasoning: step.reasoning,
         temperature: body.temperature ?? null,
-        repairTurn: plan.repair.length,
+        repairTurn: plan.turns.filter((t) => t.kind === "repair").length,
+        toolRound: plan.turns.filter((t) => t.kind === "tools").length,
         stream: Boolean(body.stream),
       },
     };
 
     let raw: RawResult;
-    const release = await rt.limiter
-      .acquire(model.id, spec.lane ?? "normal", spec.signal)
-      .catch((error: Error) => {
-        throw error.name === "AbortError" ? new LlmError("aborted", "Cancelled") : error;
-      });
     try {
-      raw = await send(rt, connection, body, spec.signal);
+      raw = await send(rt, connection, body, spec.signal, (chars) => activity.received(chars));
     } catch (error) {
-      release();
+      activity.end();
       const err = error instanceof LlmError ? error : classifyError(error, null, spec.signal);
-      await rt.log.append({
-        ...logBase,
-        finishReason: null,
-        latencyMs: Date.now() - started,
-        usage: emptyUsage(),
-        error: `${err.kind}: ${err.message}`,
-      });
+      // A wrong key or address fails every request the same way. Hand the
+      // slot on only after the caller has seen this error and cancelled the
+      // requests waiting for it, so they aren't sent just to fail too.
+      const fatal = err.kind === "config" || err.kind === "auth";
+      if (!fatal) release();
+      try {
+        await rt.log.append({
+          ...logBase,
+          finishReason: null,
+          latencyMs: Date.now() - started,
+          usage: emptyUsage(),
+          error: `${err.kind}: ${err.message}`,
+        });
+      } finally {
+        if (fatal) setImmediate(release);
+      }
       if (err.kind === "transport" && transportRetries < MAX_TRANSPORT_RETRIES) {
         transportRetries++;
         await sleep(waits.transportMs * transportRetries, spec.signal);
@@ -510,22 +593,23 @@ export async function callStructured<T>(
       }
       if (err.kind === "rate_limit" && rateWaits < MAX_RATE_LIMIT_WAITS) {
         rateWaits++;
-        rt.limiter.backoff(model.id);
+        rt.limiter.backoff(connection.id);
         await sleep(retryAfterMs(err, waits.rateLimitMs), spec.signal);
         continue;
       }
       throw err;
     }
     release();
-    rt.limiter.recover(model.id);
+    activity.end();
+    rt.limiter.recover(connection.id);
 
     const callUsage = usageFrom(raw.usage, model, promptEstimate, raw.content);
     usage = addUsage(usage, callUsage);
     spec.onUsage?.(callUsage);
     if (raw.usage) {
-      if (plan.repair.length === 0)
+      if (plan.turns.length === 0)
         rt.calibration.recordPrompt(model.id, rawEstimate, raw.usage.promptTokens);
-      if (raw.usage.reasoningTokens > 0)
+      if (raw.usage.reasoningTokens > 0 && raw.finishReason !== "length")
         rt.calibration.recordReasoning(model.id, spec.step, raw.usage.reasoningTokens);
     }
     const log = (error: string | null) =>
@@ -548,6 +632,45 @@ export async function callStructured<T>(
           },
         },
       );
+
+    // The model asked the advisor: get the advice and let it continue.
+    if (advisor && raw.toolCalls?.length) {
+      await log(null);
+      toolRounds++;
+      if (toolRounds > advisor.maxConsultations + 2)
+        throw new LlmError(
+          "invalid_output",
+          "The model kept asking the advisor instead of answering.",
+          { raw: raw.content },
+        );
+      const results: ToolResult[] = [];
+      for (const call of raw.toolCalls) {
+        const question = questionOf(call.arguments);
+        let content: string;
+        if (call.name !== ADVISOR_TOOL) content = `There is no tool named "${call.name}".`;
+        else if (!question) content = 'Ask with {"question": "..."}.';
+        else if (consultations >= advisor.maxConsultations)
+          content = `You have asked the advisor ${advisor.maxConsultations === 1 ? "once" : `${advisor.maxConsultations} times`} already, the most allowed in one answer. Finish the answer on your own.`;
+        else {
+          consultations++;
+          const advice = await consultAdvisor(rt, advisor, question, {
+            projectId: spec.projectId,
+            step: spec.step,
+            label: spec.label,
+            signal: spec.signal,
+          });
+          usage = addUsage(usage, advice.usage);
+          spec.onUsage?.(advice.usage);
+          content = advice.text;
+        }
+        results.push({ id: call.id, name: call.name, content });
+      }
+      plan = {
+        ...plan,
+        turns: [...plan.turns, { kind: "tools", assistant: raw.replay, results }],
+      };
+      continue;
+    }
 
     // Refusals and content filters.
     if (
@@ -584,20 +707,17 @@ export async function callStructured<T>(
           raw.usage.reasoningTokens >= 0.8 * raw.usage.completionTokens);
       if (reasoningHeavy) {
         await log("reasoning used up the output limit");
-        if (!reasoningRetried) {
+        // Once more with everything the model, the step and the context allow.
+        const full = { ...plan, reasoningAllowance: Number.POSITIVE_INFINITY };
+        const before = outputLimit(model, step, plan);
+        if (!reasoningRetried && outputLimit(model, step, full) > before) {
           reasoningRetried = true;
-          plan = {
-            ...plan,
-            reasoningAllowance: Math.max(
-              plan.reasoningAllowance * 2,
-              plan.reasoningAllowance + 8000,
-            ),
-          };
+          plan = full;
           continue;
         }
         throw new LlmError(
           "reasoning_exhausted",
-          "The model spent its whole output limit on reasoning. Lower the reasoning effort or raise the output limit.",
+          `The model spent its whole output limit (${before.toLocaleString("en")} tokens) on reasoning. Lower the reasoning effort, or raise the model's Max output if the model allows more.`,
           { raw: raw.content },
         );
       }
@@ -642,9 +762,13 @@ export async function callStructured<T>(
       repairs++;
       plan = {
         ...plan,
-        repair: [
-          ...plan.repair,
-          { previous: raw.content.slice(0, 60_000), problems: repairMessage(picked.problems) },
+        turns: [
+          ...plan.turns,
+          {
+            kind: "repair",
+            previous: raw.content.slice(0, 60_000),
+            problems: repairMessage(picked.problems),
+          },
         ],
       };
       continue;

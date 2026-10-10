@@ -2,22 +2,46 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { Hono } from "hono";
 import { z } from "zod";
-import { loadSteps, phase2Estimate, ReviewFile } from "../../pipeline/phase2.ts";
-import { phase3Estimate } from "../../pipeline/phase3-job.ts";
-import { bookDetail, deleteBook, importBook, saveSetup, updateBook } from "../../services/books.ts";
+import { loadSteps, phase2Estimate, ReviewFile, readOverrides } from "../../pipeline/phase2.ts";
+import { phase3Estimate, preparedFor } from "../../pipeline/phase3-job.ts";
+import {
+  bookDetail,
+  deleteBook,
+  importBook,
+  liveBook,
+  saveSetup,
+  updateBook,
+} from "../../services/books.ts";
+import {
+  historyView,
+  restoreKnowledge,
+  restoreTranslation,
+  savedBuildFile,
+  saveTranslation,
+} from "../../services/history.ts";
+import { UserError } from "../../services/projects.ts";
+import {
+  CURRENT,
+  editVersionUnit,
+  revertVersionUnit,
+  reviewUnits,
+  rewritePassage,
+} from "../../services/review.ts";
 import {
   acceptUnit,
   chaptersOverview,
   chapterUnits,
   decodeUnitKey,
   glossary,
+  loadPlan,
   removeManualEdit,
   saveManualEdit,
   saveToc,
   tocView,
 } from "../../services/translation.ts";
+import { ID_RE } from "../../shared/schemas/common.ts";
 import { BookSetup } from "../../shared/schemas/epub.ts";
-import { RefKbMode } from "../../shared/schemas/project.ts";
+import { RefKbMode, TranslationMode } from "../../shared/schemas/project.ts";
 import { readJson } from "../../store/json.ts";
 import type { AppContext } from "../context.ts";
 import { HttpError, idParam, intParam, jsonBody } from "../http.ts";
@@ -47,6 +71,7 @@ export function bookRoutes(app: AppContext): Hono {
         title: z.string().max(300).optional(),
         pairIds: z.array(z.string()).optional(),
         refKbMode: RefKbMode.optional(),
+        translationMode: TranslationMode.optional(),
         options: z
           .object({
             newIdentifier: z.boolean().optional(),
@@ -55,9 +80,18 @@ export function bookRoutes(app: AppContext): Hono {
           .optional(),
       }),
     );
+    const active = app.runner.activeFor(bookId);
+    if (body.translationMode && (active?.type === "phase3" || active?.type === "retranslate"))
+      throw new HttpError(409, "busy", "Wait for the translation to finish before switching.");
+    const before = await app.projects.book(pid, bookId);
     const book = await updateBook(app, pid, bookId, body);
+    if (book.translationMode !== before.translationMode) {
+      // Re-plan now, so the chapter list never reads a plan that is being rewritten.
+      // Without a translation model this waits for the next run.
+      await preparedFor(app, pid, bookId, null).catch(() => undefined);
+    }
     app.events.changed(pid, "books", bookId);
-    return c.json({ book });
+    return c.json({ book: liveBook(app, book) });
   });
 
   r.put("/:pid/books/:bookId/setup", async (c) => {
@@ -111,7 +145,33 @@ export function bookRoutes(app: AppContext): Hono {
     const pid = idParam(c, "pid");
     const bookId = idParam(c, "bookId");
     await app.projects.book(pid, bookId);
-    return c.json({ job: startPhase2(pid, bookId, {}) }, 202);
+    // `again`: run the final review again even if nothing changed.
+    const body = await jsonBody(c, z.object({ again: z.boolean().default(false) }), {
+      optional: true,
+    });
+    return c.json({ job: startPhase2(pid, bookId, body.again ? { again: true } : {}) }, 202);
+  });
+
+  /** Reads the whole book again from an empty knowledge base, after saving the current one. */
+  r.post("/:pid/books/:bookId/phase2/rebuild", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    await app.projects.book(pid, bookId);
+    const body = await jsonBody(c, z.object({ dropOwn: z.boolean().default(false) }), {
+      optional: true,
+    });
+    return c.json({ job: startPhase2(pid, bookId, { rebuild: true, dropOwn: body.dropOwn }) }, 202);
+  });
+
+  /** How many of the knowledge base's entries and rules are your own changes. */
+  r.get("/:pid/books/:bookId/phase2/own-changes", async (c) => {
+    const overrides = await readOverrides(app, idParam(c, "pid"), idParam(c, "bookId"));
+    const entries = Object.values(overrides.entries);
+    return c.json({
+      entries: entries.filter((e) => e.entry !== null).length,
+      deletions: entries.filter((e) => e.entry === null).length,
+      styleRules: Object.keys(overrides.styleRules).length,
+    });
   });
 
   r.post("/:pid/books/:bookId/phase2/rerun-from/:step", async (c) => {
@@ -148,6 +208,55 @@ export function bookRoutes(app: AppContext): Hono {
   r.get("/:pid/books/:bookId/chapters/:cid/units", async (c) =>
     c.json(await chapterUnits(app, idParam(c, "pid"), idParam(c, "bookId"), idParam(c, "cid"))),
   );
+
+  // Review: versions side by side ---------------------------------------------
+
+  r.get("/:pid/books/:bookId/chapters/:cid/review", async (c) => {
+    const versions = (c.req.query("versions") ?? CURRENT).split(",").filter(Boolean);
+    if (versions.length === 0 || versions.length > 3 || !versions.every((v) => ID_RE.test(v)))
+      throw new HttpError(400, "bad_request", "Choose one to three versions.");
+    return c.json(
+      await reviewUnits(app, idParam(c, "pid"), idParam(c, "bookId"), idParam(c, "cid"), versions),
+    );
+  });
+
+  r.put("/:pid/books/:bookId/versions/:vid/units/:ukey", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    const body = await jsonBody(c, z.object({ text: z.string().max(200_000) }));
+    await editVersionUnit(app, pid, bookId, idParam(c, "vid"), unitKey(c), body.text);
+    app.events.changed(pid, "phase3", bookId);
+    return c.json({ ok: true });
+  });
+
+  r.delete("/:pid/books/:bookId/versions/:vid/units/:ukey/edit", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    await revertVersionUnit(app, pid, bookId, idParam(c, "vid"), unitKey(c));
+    app.events.changed(pid, "phase3", bookId);
+    return c.json({ ok: true });
+  });
+
+  r.post("/:pid/books/:bookId/units/:ukey/rewrite", async (c) => {
+    const body = await jsonBody(
+      c,
+      z.object({
+        version: z.string().regex(ID_RE),
+        text: z.string().max(200_000),
+        selection: z
+          .object({ start: z.number().int().min(0), end: z.number().int().min(0) })
+          .nullable()
+          .default(null),
+        modelId: z.string(),
+        context: z.boolean().default(false),
+        knowledgeBases: z.boolean().default(true),
+        instruction: z.string().max(2000).nullable().default(null),
+      }),
+    );
+    return c.json(
+      await rewritePassage(app, idParam(c, "pid"), idParam(c, "bookId"), unitKey(c), body),
+    );
+  });
 
   const unitKey = (c: Parameters<typeof idParam>[0]) => decodeUnitKey(idParam(c, "ukey"));
 
@@ -237,6 +346,80 @@ export function bookRoutes(app: AppContext): Hono {
     );
     await saveToc(app, pid, bookId, body.title, body.items);
     return c.json({ ok: true });
+  });
+
+  r.post("/:pid/books/:bookId/phase3/redo", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    await app.projects.book(pid, bookId);
+    app.settings.target("phase3.translate");
+    const job = app.runner.start({
+      type: "phase3",
+      projectId: pid,
+      targetKind: "book",
+      targetId: bookId,
+      params: { fresh: true },
+    });
+    return c.json({ job }, 202);
+  });
+
+  // History ------------------------------------------------------------------
+
+  r.get("/:pid/books/:bookId/history", async (c) =>
+    c.json(await historyView(app, idParam(c, "pid"), idParam(c, "bookId"))),
+  );
+
+  r.post("/:pid/books/:bookId/history/translations", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    const id = await saveTranslation(app, pid, bookId, "manual");
+    if (!id) throw new UserError("Nothing is translated yet.");
+    app.events.changed(pid, "phase3", bookId);
+    return c.json({ id });
+  });
+
+  r.post("/:pid/books/:bookId/history/translations/:tid/restore", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    if (app.runner.activeFor(bookId))
+      throw new HttpError(409, "busy", "Wait for the running job to finish before restoring.");
+    // The current plan, so the passages land in the chunks the book uses now.
+    const plan =
+      (await preparedFor(app, pid, bookId, null).then(
+        (p) => p.prepared.plan,
+        () => null,
+      )) ?? (await loadPlan(app, pid, bookId));
+    if (!plan) throw new UserError("Choose a model for translation in Settings first.");
+    await restoreTranslation(app, pid, bookId, idParam(c, "tid"), plan);
+    app.events.changed(pid, "phase3", bookId);
+    app.events.changed(pid, "books", bookId);
+    return c.json({ ok: true });
+  });
+
+  r.post("/:pid/books/:bookId/history/knowledge/:kid/restore", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    if (app.runner.activeFor(bookId))
+      throw new HttpError(409, "busy", "Wait for the running job to finish before restoring.");
+    await restoreKnowledge(app, pid, bookId, idParam(c, "kid"));
+    app.events.changed(pid, "kb", bookId);
+    app.events.changed(pid, "books", bookId);
+    return c.json({ ok: true });
+  });
+
+  r.get("/:pid/books/:bookId/history/builds/:id", async (c) => {
+    const { build, data } = await savedBuildFile(
+      app,
+      idParam(c, "pid"),
+      idParam(c, "bookId"),
+      idParam(c, "id"),
+    );
+    return new Response(data, {
+      headers: {
+        "content-type": "application/epub+zip",
+        "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(build.fileName)}`,
+      },
+    });
   });
 
   // Build --------------------------------------------------------------------

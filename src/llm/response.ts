@@ -14,6 +14,13 @@ export interface NormalizedUsage {
   cost: number | null;
 }
 
+export interface ToolCall {
+  id: string;
+  name: string;
+  /** The arguments as JSON text. */
+  arguments: string;
+}
+
 export interface RawResult {
   content: string;
   reasoning: string;
@@ -21,6 +28,28 @@ export interface RawResult {
   finishReason: string | null;
   usage: NormalizedUsage | null;
   model: string | null;
+  /** Functions the model called (none when it answered). */
+  toolCalls?: ToolCall[];
+  /** With tool calls: the model's message in its API's shape, to send back in the next turn. */
+  replay?: unknown;
+}
+
+/** Tool calls of an OpenAI-style message: `[{id, function: {name, arguments}}]`. */
+function toolCallsOf(value: unknown): ToolCall[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((raw, i) => {
+    const call = obj(raw);
+    const fn = obj(call.function);
+    if (typeof fn.name !== "string") return [];
+    const args = fn.arguments;
+    return [
+      {
+        id: typeof call.id === "string" && call.id ? call.id : `call_${i}`,
+        name: fn.name,
+        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      },
+    ];
+  });
 }
 
 type Dict = Record<string, unknown>;
@@ -62,6 +91,7 @@ function reasoningOf(delta: Dict): string {
 export async function readStream(
   stream: AsyncIterable<unknown>,
   onActivity: () => void,
+  onText?: (chars: number) => void,
 ): Promise<RawResult> {
   let content = "";
   let reasoning = "";
@@ -69,6 +99,8 @@ export async function readStream(
   let finishReason: string | null = null;
   let usage: NormalizedUsage | null = null;
   let model: string | null = null;
+  // Tool calls arrive in pieces, keyed by index: id and name first, then the arguments.
+  const calls = new Map<number, { id: string; name: string; arguments: string }>();
   for await (const chunk of stream) {
     onActivity();
     const c = obj(chunk);
@@ -86,12 +118,31 @@ export async function readStream(
     const choice = choices[0];
     if (!choice) continue;
     const delta = obj(choice.delta);
-    if (typeof delta.content === "string") content += delta.content;
-    reasoning += reasoningOf(delta);
+    const piece = typeof delta.content === "string" ? delta.content : "";
+    const thought = reasoningOf(delta);
+    content += piece;
+    reasoning += thought;
+    if (onText && piece.length + thought.length > 0) onText(piece.length + thought.length);
     if (typeof delta.refusal === "string") refusal = (refusal ?? "") + delta.refusal;
     if (typeof choice.finish_reason === "string") finishReason = choice.finish_reason;
+    if (Array.isArray(delta.tool_calls)) {
+      for (const [i, raw] of (delta.tool_calls as unknown[]).entries()) {
+        const part = obj(raw);
+        const index = typeof part.index === "number" ? part.index : i;
+        const fn = obj(part.function);
+        const call = calls.get(index) ?? { id: "", name: "", arguments: "" };
+        if (typeof part.id === "string") call.id = part.id;
+        if (typeof fn.name === "string") call.name += fn.name;
+        if (typeof fn.arguments === "string") call.arguments += fn.arguments;
+        calls.set(index, call);
+      }
+    }
   }
-  return { content, reasoning, refusal, finishReason, usage, model };
+  const toolCalls = [...calls.entries()]
+    .sort(([a], [b]) => a - b)
+    .filter(([, c]) => c.name)
+    .map(([index, c]) => ({ ...c, id: c.id || `call_${index}` }));
+  return { content, reasoning, refusal, finishReason, usage, model, toolCalls };
 }
 
 export function readCompletion(completion: unknown): RawResult {
@@ -106,6 +157,7 @@ export function readCompletion(completion: unknown): RawResult {
     finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : null,
     usage: normalizeUsage(c.usage),
     model: typeof c.model === "string" ? c.model : null,
+    toolCalls: toolCallsOf(message.tool_calls),
   };
 }
 

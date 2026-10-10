@@ -6,7 +6,9 @@ import { PageHeader } from "../components/PageHeader.tsx";
 import { displayTitle } from "../lib/format.ts";
 import { BOOK_STAGES, defaultBookStage } from "../lib/stages.ts";
 import { BuildPanel } from "./book/BuildPanel.tsx";
+import { HistoryPanel } from "./book/HistoryPanel.tsx";
 import { Phase2Panel } from "./book/Phase2Panel.tsx";
+import { ReviewPanel } from "./book/ReviewPanel.tsx";
 import { SetupPanel } from "./book/SetupPanel.tsx";
 import { TranslatePanel } from "./book/TranslatePanel.tsx";
 import type { BookDetail } from "./book/types.ts";
@@ -21,9 +23,13 @@ const DESCRIPTIONS: Record<string, (target: string) => string> = {
   kb: (target) =>
     `Names, terms and facts in this book, with their ${target} translations. What you edit is locked and kept when phases run again.`,
   translate: () =>
-    "Phase 3. The AI translates the book in chunks, following both knowledge bases. Review it chapter by chapter: the English on the left page, the translation on the right.",
+    "Phase 3. The AI translates the book in chunks or whole chapters, following both knowledge bases. Review it chapter by chapter: the English on the left page, the translation on the right.",
+  review: () =>
+    "Up to three versions side by side: the English, the current translation and saved ones. Edit any of them, rewrite a passage or part of it with a model, or copy a passage from one version to another. The current translation is the one that gets built.",
   build: () =>
     "Builds the translated EPUB from the original files. The translation replaces the text; styles, images, links and footnotes stay as they were.",
+  history: () =>
+    "Every translation of this book and every EPUB built from it. A translation is saved after each run, at each build, and before it's replaced. Compare a saved translation with the current one, restore it, or download its builds.",
 };
 
 export function BookPage() {
@@ -58,7 +64,9 @@ export function BookPage() {
       {def.key === "read" && <Phase2Panel pid={pid} detail={data} />}
       {def.key === "kb" && <KbEditor pid={pid} scope="book" targetId={bookId} />}
       {def.key === "translate" && <TranslatePanel pid={pid} detail={data} />}
+      {def.key === "review" && <ReviewPanel pid={pid} bookId={bookId} />}
       {def.key === "build" && <BuildPanel pid={pid} detail={data} />}
+      {def.key === "history" && <HistoryPanel pid={pid} bookId={bookId} />}
     </>
   );
 }

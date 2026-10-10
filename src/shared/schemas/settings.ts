@@ -11,19 +11,22 @@ export const ConnectionKind = z.enum([
   "vllm",
   "ollama",
   "ollama_cloud",
+  "claude_code",
   "custom",
 ]);
 export type ConnectionKind = z.infer<typeof ConnectionKind>;
 
 /**
  * The API a connection speaks. Most kinds use OpenAI-compatible Chat
- * Completions; Ollama (local or cloud) and Anthropic use their own APIs.
+ * Completions; Ollama (local or cloud) and Anthropic use their own APIs, and
+ * Claude Code is a program run on this computer (`claude -p`).
  */
-export type Protocol = "openai" | "ollama" | "anthropic";
+export type Protocol = "openai" | "ollama" | "anthropic" | "claude_code";
 
 export function protocolOf(kind: ConnectionKind): Protocol {
   if (kind === "ollama" || kind === "ollama_cloud") return "ollama";
   if (kind === "anthropic") return "anthropic";
+  if (kind === "claude_code") return "claude_code";
   return "openai";
 }
 
@@ -41,22 +44,28 @@ export const HeaderSetting = z.object({
 });
 export type HeaderSetting = z.infer<typeof HeaderSetting>;
 
-export const Connection = z.object({
-  id: Id,
-  name: z.string().min(1),
-  kind: ConnectionKind,
-  baseUrl: z.url(),
-  apiKey: ApiKeyRef,
-  headers: z.array(HeaderSetting).default([]),
-  /** Cap on parallel requests across all models of this connection. */
-  maxParallel: z.number().int().positive().nullable().default(null),
-  /** Total deadline for one request, in seconds. */
-  timeoutSec: z.number().int().positive().default(1800),
-  /** Abort a streamed request when no data arrives for this long, in seconds. */
-  idleTimeoutSec: z.number().int().positive().default(600),
-  maxRetries: z.number().int().min(0).max(10).default(4),
-  stream: z.boolean().default(true),
-});
+export const Connection = z
+  .object({
+    id: Id,
+    name: z.string().min(1),
+    kind: ConnectionKind,
+    /** The API's address; for Claude Code, the command that runs it (`claude`, or a full path). */
+    baseUrl: z.string().min(1),
+    apiKey: ApiKeyRef,
+    headers: z.array(HeaderSetting).default([]),
+    /** How many requests to this provider run at once, across all its models. */
+    maxParallel: z.number().int().positive().default(4),
+    /** Total deadline for one request, in seconds. */
+    timeoutSec: z.number().int().positive().default(1800),
+    /** Abort a streamed request when no data arrives for this long, in seconds. */
+    idleTimeoutSec: z.number().int().positive().default(600),
+    maxRetries: z.number().int().min(0).max(10).default(4),
+    stream: z.boolean().default(true),
+  })
+  .refine((c) => c.kind === "claude_code" || URL.canParse(c.baseUrl), {
+    message: "Enter a full URL, e.g. https://api.example.com/v1.",
+    path: ["baseUrl"],
+  });
 export type Connection = z.infer<typeof Connection>;
 
 export const ReasoningTemplates = z.object({
@@ -82,7 +91,6 @@ export const Model = z.object({
   label: z.string().min(1),
   contextWindow: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),
-  maxParallel: z.number().int().positive().default(4),
   structuredOutput: z.enum(["json_schema", "json_object", "none"]),
   maxTokensParam: z.enum(["max_tokens", "max_completion_tokens"]),
   sendTemperature: z.boolean(),
@@ -109,6 +117,8 @@ export const StepSettings = z.object({
   temperature: z.number().min(0).max(2).nullable(),
   maxOutputTokens: z.number().int().positive().nullable(),
   extraBody: JsonObject.nullable(),
+  /** The step's model may ask the advisor (when the advisor is on). */
+  consultAdvisor: z.boolean().default(false),
 });
 export type StepSettings = z.infer<typeof StepSettings>;
 
@@ -117,11 +127,37 @@ export const StepSettingsMap = z.object(
 );
 export type StepSettingsMap = Record<Step, StepSettings>;
 
+/**
+ * A strong model the steps' models can consult through a tool call. It sees
+ * only the question it is asked, not the asking model's prompt.
+ */
+export const AdvisorSettings = z.object({
+  enabled: z.boolean(),
+  modelId: Id.nullable(),
+  reasoning: ReasoningSettings,
+  /** Most consultations within one request. */
+  maxConsultations: z.number().int().min(1).max(10),
+  /** Output limit for one piece of advice (with reasoning); null: the model's. */
+  maxOutputTokens: z.number().int().positive().nullable(),
+});
+export type AdvisorSettings = z.infer<typeof AdvisorSettings>;
+
+export function defaultAdvisorSettings(): AdvisorSettings {
+  return {
+    enabled: false,
+    modelId: null,
+    reasoning: { enabled: true, effort: "high", budgetTokens: null },
+    maxConsultations: 3,
+    maxOutputTokens: null,
+  };
+}
+
 export const Settings = z.object({
   schemaVersion: SchemaVersion,
   connections: z.array(Connection),
   models: z.array(Model),
   steps: StepSettingsMap,
+  advisor: AdvisorSettings.default(defaultAdvisorSettings),
 });
 export type Settings = z.infer<typeof Settings>;
 
@@ -132,6 +168,7 @@ export function defaultStepSettings(): StepSettings {
     temperature: null,
     maxOutputTokens: null,
     extraBody: null,
+    consultAdvisor: false,
   };
 }
 
@@ -141,6 +178,7 @@ export function defaultSettings(): Settings {
     connections: [],
     models: [],
     steps: Object.fromEntries(STEPS.map((s) => [s, defaultStepSettings()])) as StepSettingsMap,
+    advisor: defaultAdvisorSettings(),
   };
 }
 

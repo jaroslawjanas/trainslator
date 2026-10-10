@@ -173,6 +173,30 @@ export class DataPaths {
   phase3Toc(pid: string, bookId: string) {
     return path.join(this.phase3Dir(pid, bookId), "toc.json");
   }
+  historyDir(pid: string, bookId: string) {
+    return path.join(this.book(pid, bookId), "history");
+  }
+  historyIndex(pid: string, bookId: string) {
+    return path.join(this.historyDir(pid, bookId), "history.json");
+  }
+  savedTranslation(pid: string, bookId: string, id: string) {
+    return path.join(this.historyDir(pid, bookId), "translations", `${id}.json`);
+  }
+  savedBuild(pid: string, bookId: string, id: string) {
+    return path.join(this.historyDir(pid, bookId), "builds", `${id}.epub`);
+  }
+  /** A saved knowledge base: kb.json, kb.overrides.json and the phase2 folder. */
+  savedKnowledge(pid: string, bookId: string, id: string) {
+    return path.join(this.historyDir(pid, bookId), "knowledge", id);
+  }
+  /** Which phase 2 job already did its one-time preparation (clearing, saving). */
+  phase2StartMarker(pid: string, bookId: string) {
+    return path.join(this.book(pid, bookId), "phase2.started.json");
+  }
+  /** Which "translate the whole book again" job already cleared the translation. */
+  redoMarker(pid: string, bookId: string) {
+    return path.join(this.historyDir(pid, bookId), "redo.json");
+  }
   outputDir(pid: string, bookId: string) {
     return path.join(this.book(pid, bookId), "output");
   }

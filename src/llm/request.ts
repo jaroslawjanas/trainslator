@@ -1,5 +1,6 @@
 import {
   type Connection,
+  type ConnectionKind,
   type Model,
   protocolOf,
   type StepSettings,
@@ -23,17 +24,60 @@ export interface PromptBlock {
 /** Ends every block so tokenization at the join stays the same between calls. */
 export const BLOCK_SEPARATOR = "\n\n";
 
+/** A function the model may call, e.g. to ask the advisor. */
+export interface ToolSpec {
+  name: string;
+  description: string;
+  /** JSON Schema of the arguments. */
+  parameters: Record<string, unknown>;
+}
+
+export interface ToolResult {
+  /** The call's id, as the model gave it. */
+  id: string;
+  name: string;
+  content: string;
+}
+
+/** A follow-up after the first answer: a repair turn, or tool calls and their results. */
+export type Turn =
+  | { kind: "repair"; previous: string; problems: string }
+  | {
+      kind: "tools";
+      /** The model's message with the calls, in its API's own shape, sent back as it came. */
+      assistant: unknown;
+      results: ToolResult[];
+    };
+
 export interface RequestPlan {
   blocks: PromptBlock[];
   schemaName: string;
-  jsonSchema: JsonSchema;
+  /** Structure the answer must have; null for a plain-text answer. */
+  jsonSchema: JsonSchema | null;
   /** Expected size of the answer in tokens (without reasoning). */
   answerBudget: number;
   /** Tokens reserved for reasoning. */
   reasoningAllowance: number;
-  /** Extra messages for repair turns: the model's last answer and what was wrong. */
-  repair: { previous: string; problems: string }[];
+  /** Tokens left in the context window after the prompt; the output limit stays under it. */
+  contextRoom?: number;
+  /** Messages after the first: repair turns and tool calls, in order. */
+  turns: Turn[];
+  /** Functions the model may call. */
+  tools?: ToolSpec[];
   promptCacheKey: string | null;
+}
+
+/**
+ * Servers that force the whole output into the schema, so a model can't
+ * call a tool while it's enforced. With tools offered, the schema is only
+ * described in the prompt (and the answer checked as always).
+ */
+const SCHEMA_BLOCKS_TOOLS = new Set<ConnectionKind>(["ollama", "ollama_cloud", "vllm"]);
+
+function enforceSchema(connection: Connection, plan: RequestPlan): boolean {
+  return (
+    plan.jsonSchema !== null && !(plan.tools?.length && SCHEMA_BLOCKS_TOOLS.has(connection.kind))
+  );
 }
 
 type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -83,19 +127,27 @@ export function reasoningParams(model: Model, step: StepSettings): Record<string
   return substitute(template, effort, budgetTokens) as Record<string, unknown>;
 }
 
-/** The output token limit: answer + reasoning, capped by the model and the step. */
+/**
+ * The output token limit: answer + reasoning, capped by the model, the step
+ * and what's left of the context window. It's a ceiling, not a target: the
+ * reasoning effort sent to the model decides how much it thinks.
+ */
 export function outputLimit(
   model: Model,
   step: StepSettings,
-  plan: Pick<RequestPlan, "answerBudget" | "reasoningAllowance">,
+  plan: Pick<RequestPlan, "answerBudget" | "reasoningAllowance" | "contextRoom">,
 ): number {
-  const cap = Math.min(model.maxOutputTokens, step.maxOutputTokens ?? Number.POSITIVE_INFINITY);
+  const cap = Math.min(
+    model.maxOutputTokens,
+    step.maxOutputTokens ?? Number.POSITIVE_INFINITY,
+    plan.contextRoom ?? Number.POSITIVE_INFINITY,
+  );
   const wanted = plan.answerBudget + plan.reasoningAllowance;
   return Math.max(256, Math.min(cap, wanted));
 }
 
-function schemaInstructions(plan: RequestPlan): string {
-  return `Respond with a single JSON object and nothing else. It must match this structure exactly (use null where a value is unknown or doesn't apply; keys whose value is null may be left out):\n${describeSchema(plan.jsonSchema)}`;
+function schemaInstructions(schema: JsonSchema): string {
+  return `Respond with a single JSON object and nothing else. It must match this structure exactly (use null where a value is unknown or doesn't apply; keys whose value is null may be left out):\n${describeSchema(schema)}`;
 }
 
 function contentFor(blocks: PromptBlock[], markers: boolean, ttl: "5m" | "1h"): string | Json[] {
@@ -121,7 +173,12 @@ function promptParts(plan: RequestPlan, markers: boolean) {
   const userBlocks = plan.blocks.filter((b) => b.role === "user").map((b) => ({ ...b }));
   // Always describe the structure in the prompt too: many providers accept
   // a schema but don't enforce it.
-  systemBlocks.push({ role: "system", label: "output format", text: schemaInstructions(plan) });
+  if (plan.jsonSchema)
+    systemBlocks.push({
+      role: "system",
+      label: "output format",
+      text: schemaInstructions(plan.jsonSchema),
+    });
   if (markers) {
     // At most 4 explicit cache breakpoints (Anthropic's limit); keep the last ones.
     const flagged = [...systemBlocks, ...userBlocks].filter((b) => b.cacheBreakpoint);
@@ -136,6 +193,18 @@ function joined(blocks: PromptBlock[]): string {
   return blocks.map((b) => b.text + BLOCK_SEPARATOR).join("");
 }
 
+/** Tools in the OpenAI function format (also Ollama's). */
+function functionTools(tools: ToolSpec[]): Json[] {
+  return tools.map((t) => ({
+    type: "function",
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: t.parameters as { [key: string]: Json },
+    },
+  }));
+}
+
 /** Builds the request body in the format of the connection's API. */
 export function buildRequestBody(
   connection: Connection,
@@ -147,6 +216,7 @@ export function buildRequestBody(
   const protocol = protocolOf(connection.kind);
   if (protocol === "ollama") return buildOllamaBody(connection, model, step, plan, stream);
   if (protocol === "anthropic") return buildAnthropicBody(model, step, plan, stream);
+  if (protocol === "claude_code") return buildClaudeCodeBody(model, step, plan, stream);
   return buildChatCompletionsBody(connection, model, step, plan, stream);
 }
 
@@ -176,9 +246,15 @@ function buildChatCompletionsBody(
     });
   }
   messages.push({ role: "user", content: contentFor(userBlocks, markers, model.cacheMarkerTtl) });
-  for (const turn of plan.repair) {
-    messages.push({ role: "assistant", content: turn.previous });
-    messages.push({ role: "user", content: turn.problems });
+  for (const turn of plan.turns) {
+    if (turn.kind === "repair") {
+      messages.push({ role: "assistant", content: turn.previous });
+      messages.push({ role: "user", content: turn.problems });
+    } else {
+      messages.push(turn.assistant as Json);
+      for (const r of turn.results)
+        messages.push({ role: "tool", tool_call_id: r.id, content: r.content });
+    }
   }
 
   let body: Record<string, unknown> = {
@@ -186,17 +262,24 @@ function buildChatCompletionsBody(
     messages,
     [model.maxTokensParam]: outputLimit(model, step, plan),
   };
-  if (model.structuredOutput === "json_schema") {
-    body.response_format = {
-      type: "json_schema",
-      json_schema: { name: plan.schemaName, strict: true, schema: plan.jsonSchema },
-    };
-  } else if (model.structuredOutput === "json_object") {
-    body.response_format = { type: "json_object" };
+  if (plan.jsonSchema && enforceSchema(connection, plan)) {
+    if (model.structuredOutput === "json_schema") {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { name: plan.schemaName, strict: true, schema: plan.jsonSchema },
+      };
+    } else if (model.structuredOutput === "json_object") {
+      body.response_format = { type: "json_object" };
+    }
   }
+  if (plan.tools?.length) body.tools = functionTools(plan.tools);
   if (step.temperature !== null && model.sendTemperature) body.temperature = step.temperature;
   if (model.sendPromptCacheKey && plan.promptCacheKey) body.prompt_cache_key = plan.promptCacheKey;
-  if (connection.kind === "openrouter" && model.structuredOutput === "json_schema") {
+  // Only providers that honour the schema and the tools.
+  if (
+    connection.kind === "openrouter" &&
+    ((body.response_format && model.structuredOutput === "json_schema") || body.tools)
+  ) {
     body.provider = { require_parameters: true };
   }
   const reasoning = reasoningParams(model, step);
@@ -207,6 +290,30 @@ function buildChatCompletionsBody(
   }
   if (step.extraBody) body = deepMerge(body, step.extraBody);
   return body;
+}
+
+/**
+ * Ollama's "think" is on/off, or a level ("low", "medium", "high") for
+ * models that have levels. Other efforts go to the nearest level.
+ */
+function ollamaThink(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  switch (value.trim().toLowerCase()) {
+    case "none":
+    case "false":
+      return false;
+    case "minimal":
+    case "low":
+      return "low";
+    case "medium":
+      return "medium";
+    case "high":
+    case "xhigh":
+    case "max":
+      return "high";
+    default:
+      return true;
+  }
 }
 
 /**
@@ -226,9 +333,15 @@ function buildOllamaBody(
     { role: "system", content: joined(systemBlocks) },
     { role: "user", content: joined(userBlocks) },
   ];
-  for (const turn of plan.repair) {
-    messages.push({ role: "assistant", content: turn.previous });
-    messages.push({ role: "user", content: turn.problems });
+  for (const turn of plan.turns) {
+    if (turn.kind === "repair") {
+      messages.push({ role: "assistant", content: turn.previous });
+      messages.push({ role: "user", content: turn.problems });
+    } else {
+      messages.push(turn.assistant as Json);
+      for (const r of turn.results)
+        messages.push({ role: "tool", content: r.content, tool_name: r.name });
+    }
   }
   const options: Record<string, unknown> = { num_predict: outputLimit(model, step, plan) };
   // On this computer the context size must be asked for, or Ollama's small
@@ -241,8 +354,53 @@ function buildOllamaBody(
       ? model.modelName.replace(/[-:]cloud$/, "")
       : model.modelName;
   let body: Record<string, unknown> = { model: name, messages, stream, options };
-  if (model.structuredOutput === "json_schema") body.format = plan.jsonSchema;
-  else if (model.structuredOutput === "json_object") body.format = "json";
+  if (plan.jsonSchema && enforceSchema(connection, plan)) {
+    if (model.structuredOutput === "json_schema") body.format = plan.jsonSchema;
+    else if (model.structuredOutput === "json_object") body.format = "json";
+  }
+  if (plan.tools?.length) body.tools = functionTools(plan.tools);
+  const reasoning = reasoningParams(model, step);
+  if (reasoning)
+    body = deepMerge(
+      body,
+      "think" in reasoning ? { ...reasoning, think: ollamaThink(reasoning.think) } : reasoning,
+    );
+  if (step.extraBody) body = deepMerge(body, step.extraBody);
+  return body;
+}
+
+/**
+ * Claude Code (`claude -p`): not an HTTP body, but what the run needs. The
+ * stable part (instructions, and the user blocks up to the last cache
+ * breakpoint, e.g. the knowledge bases) becomes the system prompt, which
+ * Claude Code caches; the rest is the prompt. Follow-up turns are written
+ * into the prompt, since each run is a fresh conversation. It takes no
+ * output limit, temperature or tools.
+ */
+function buildClaudeCodeBody(
+  model: Model,
+  step: StepSettings,
+  plan: RequestPlan,
+  stream: boolean,
+): Record<string, unknown> {
+  const { systemBlocks } = promptParts(plan, false);
+  const userBlocks = plan.blocks.filter((b) => b.role === "user");
+  let stable = userBlocks.findLastIndex((b) => b.cacheBreakpoint) + 1;
+  // Something must go through stdin.
+  if (stable >= userBlocks.length) stable = userBlocks.length - 1;
+  const turns = plan.turns.flatMap((t) =>
+    t.kind === "repair"
+      ? [`# Your previous answer\n${t.previous}\n\n# What was wrong with it\n${t.problems}`]
+      : [],
+  );
+  let body: Record<string, unknown> = {
+    model: model.modelName,
+    system: joined([...systemBlocks, ...userBlocks.slice(0, Math.max(0, stable))]),
+    prompt: [joined(userBlocks.slice(Math.max(0, stable))), ...turns].join("\n\n"),
+    stream,
+  };
+  if (plan.jsonSchema && model.structuredOutput === "json_schema")
+    body.json_schema = plan.jsonSchema;
   const reasoning = reasoningParams(model, step);
   if (reasoning) body = deepMerge(body, reasoning);
   if (step.extraBody) body = deepMerge(body, step.extraBody);
@@ -264,9 +422,21 @@ function buildAnthropicBody(
     return block;
   };
   const messages: Json[] = [{ role: "user", content: userBlocks.map(textBlock) }];
-  for (const turn of plan.repair) {
-    messages.push({ role: "assistant", content: turn.previous });
-    messages.push({ role: "user", content: turn.problems });
+  for (const turn of plan.turns) {
+    if (turn.kind === "repair") {
+      messages.push({ role: "assistant", content: turn.previous });
+      messages.push({ role: "user", content: turn.problems });
+    } else {
+      messages.push(turn.assistant as Json);
+      messages.push({
+        role: "user",
+        content: turn.results.map((r) => ({
+          type: "tool_result",
+          tool_use_id: r.id,
+          content: r.content,
+        })),
+      });
+    }
   }
   let body: Record<string, unknown> = {
     model: model.modelName,
@@ -274,9 +444,15 @@ function buildAnthropicBody(
     system: systemBlocks.map(textBlock),
     messages,
   };
-  if (model.structuredOutput === "json_schema") {
+  if (plan.jsonSchema && model.structuredOutput === "json_schema") {
     body.output_config = { format: { type: "json_schema", schema: plan.jsonSchema } };
   }
+  if (plan.tools?.length)
+    body.tools = plan.tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.parameters as { [key: string]: Json },
+    }));
   if (step.temperature !== null && model.sendTemperature) body.temperature = step.temperature;
   const reasoning = reasoningParams(model, step);
   if (reasoning) body = deepMerge(body, reasoning);

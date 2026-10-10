@@ -189,4 +189,105 @@ describe("phase 2", () => {
     });
     expect(again.entries.filter((e) => e.source === "Pepper")).toHaveLength(1);
   });
+
+  it("saves an answer without locking it, and keeps it when reviewing again", async () => {
+    const { pid, bookId } = await setup(false);
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    const kb = await run(`${base}/phase2/run`);
+    const pepper = kb.entries.find((e) => e.source === "Pepper")!;
+    expect(pepper.status).toBe("open");
+    const saved = await srv!.json<{ kb: Kb }>("PUT", `${base}/kb/entries/${pepper.id}/unlocked`, {
+      ...pepper,
+      target: "Pieprzyk",
+    });
+    expect(saved.kb.entries.find((e) => e.id === pepper.id)).toMatchObject({
+      target: "Pieprzyk",
+      status: "auto",
+      question: null,
+    });
+    // Not one of your locked changes.
+    expect(await srv!.json("GET", `${base}/phase2/own-changes`)).toMatchObject({ entries: 0 });
+    const { job } = await srv!.json<{ job: { id: string } }>("POST", `${base}/phase2/run`, {
+      again: true,
+    });
+    await srv!.ctx.runner.wait(job.id);
+    const after = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(after.entries.find((e) => e.id === pepper.id)).toMatchObject({
+      target: "Pieprzyk",
+      status: "auto",
+    });
+    // A locked entry is saved locked or unlocked first.
+    const mira = after.entries.find((e) => e.source === "Mira")!;
+    await srv!.json("PUT", `${base}/kb/entries/${mira.id}`, { ...mira, target: "Mirka" });
+    const refused = await srv!.call("PUT", `${base}/kb/entries/${mira.id}/unlocked`, {
+      ...mira,
+      target: "Mireczka",
+    });
+    expect(refused.status).toBe(400);
+  });
+
+  it("reads the whole book again with fresh answers, keeping your changes, and can go back", async () => {
+    const { pid, bookId } = await setup();
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    const first = await run(`${base}/phase2/run`);
+
+    // Continuing a finished read asks nothing; reviewing again does, even unchanged.
+    const sent = fake!.requests.length;
+    await run(`${base}/phase2/run`);
+    expect(fake!.requests.length).toBe(sent);
+    const { job: again } = await srv!.json<{ job: { id: string } }>("POST", `${base}/phase2/run`, {
+      again: true,
+    });
+    await srv!.ctx.runner.wait(again.id);
+    expect(fake!.requests.length).toBeGreaterThan(sent);
+
+    const mira = first.entries.find((e) => e.source === "Mira")!;
+    const heron = first.entries.find((e) => e.source === "Gray Heron")!;
+    // Your changes: Mira's translation set by hand, the ship deleted.
+    await srv!.json("PUT", `${base}/kb/entries/${mira.id}`, { ...mira, target: "Mirka" });
+    await srv!.json("DELETE", `${base}/kb/entries/${heron.id}`);
+    expect(await srv!.json("GET", `${base}/phase2/own-changes`)).toEqual({
+      entries: 1,
+      deletions: 1,
+      styleRules: 0,
+    });
+
+    // The whole book again: every chapter is asked anew, not taken from saved answers.
+    const before = fake!.requests.length;
+    const { job } = await srv!.json<{ job: { id: string } }>("POST", `${base}/phase2/rebuild`, {
+      dropOwn: false,
+    });
+    expect((await srv!.ctx.runner.wait(job.id))?.error ?? null).toBeNull();
+    expect(fake!.requests.length - before).toBeGreaterThanOrEqual(3);
+    let kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.find((e) => e.source === "Mira")).toMatchObject({
+      target: "Mirka",
+      status: "locked",
+    });
+    expect(kb.entries.some((e) => e.source === "Gray Heron")).toBe(false);
+
+    // The knowledge base from before was saved, and comes back with a restore.
+    const history = await srv!.json<{
+      knowledgeBases: { id: string; reason: string }[];
+    }>("GET", `${base}/history`);
+    expect(history.knowledgeBases.map((k) => k.reason)).toEqual(["rebuild"]);
+
+    // Starting clean drops your changes: the ship is back, Mira is the AI's again.
+    const { job: clean } = await srv!.json<{ job: { id: string } }>(
+      "POST",
+      `${base}/phase2/rebuild`,
+      { dropOwn: true },
+    );
+    await srv!.ctx.runner.wait(clean.id);
+    kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.find((e) => e.source === "Mira")!.target).toBe("Mira");
+    expect(kb.entries.some((e) => e.source === "Gray Heron")).toBe(true);
+
+    // Restoring the first saved copy brings your changes back.
+    await srv!.json("POST", `${base}/history/knowledge/${history.knowledgeBases[0]!.id}/restore`);
+    kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.find((e) => e.source === "Mira")!.target).toBe("Mirka");
+    expect(kb.entries.some((e) => e.source === "Gray Heron")).toBe(false);
+    expect(await srv!.json("GET", `${base}/phase2/own-changes`)).toMatchObject({ deletions: 1 });
+  });
 });

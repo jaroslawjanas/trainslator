@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { phase1Estimate } from "../../pipeline/phase1.ts";
+import { phase1ChapterFindings, phase1Chapters, phase1Estimate } from "../../pipeline/phase1.ts";
 import {
   aiProposeAlignment,
   deletePair,
@@ -13,7 +13,7 @@ import {
 } from "../../services/pairs.ts";
 import { Alignment } from "../../shared/schemas/alignment.ts";
 import type { AppContext } from "../context.ts";
-import { HttpError, idParam, jsonBody } from "../http.ts";
+import { HttpError, idParam, intParam, jsonBody } from "../http.ts";
 
 async function fileField(
   form: Record<string, unknown>,
@@ -89,6 +89,21 @@ export function pairRoutes(app: AppContext): Hono {
 
   r.get("/:pid/pairs/:pairId/units/:uid/preview", async (c) =>
     c.json(await unitPreview(app, idParam(c, "pid"), idParam(c, "pairId"), idParam(c, "uid"))),
+  );
+
+  r.get("/:pid/pairs/:pairId/phase1/chapters", async (c) =>
+    c.json(await phase1Chapters(app, idParam(c, "pid"), idParam(c, "pairId"))),
+  );
+
+  r.get("/:pid/pairs/:pairId/phase1/chapters/:position", async (c) =>
+    c.json(
+      await phase1ChapterFindings(
+        app,
+        idParam(c, "pid"),
+        idParam(c, "pairId"),
+        intParam(c, "position"),
+      ),
+    ),
   );
 
   r.get("/:pid/pairs/:pairId/phase1/estimate", async (c) =>

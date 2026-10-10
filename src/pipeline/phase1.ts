@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { z } from "zod";
 import { renderRangesMarkdown } from "../epub/text.ts";
 import type { JobContext } from "../jobs/runner.ts";
@@ -16,12 +17,14 @@ import { answerCap, callStructured, replyCandidates, withRoomToGrow } from "../l
 import { isLlmError } from "../llm/errors.ts";
 import { estimateTokens } from "../llm/tokens.ts";
 import {
+  type Finding,
   type MergeDecision,
   MergeOutput,
   mergeSystem,
   PHASE1_PROMPT_VERSION,
   ReadOutput,
   readBlocks,
+  type StyleNote,
   StyleOutput,
   styleBlocks,
 } from "../prompts/phase1.ts";
@@ -30,7 +33,7 @@ import { loadAlignment, loadStructure, segmentsAt } from "../services/pairs.ts";
 import { UserError } from "../services/projects.ts";
 import { nowIso } from "../shared/schemas/common.ts";
 import { emptyOverrides, Kb, KbOverrides } from "../shared/schemas/kb.ts";
-import { readJson, writeJson } from "../store/json.ts";
+import { listDir, readJson, writeJson } from "../store/json.ts";
 
 const FindingsFile = z.object({
   schemaVersion: z.literal(1),
@@ -50,6 +53,31 @@ const StyleFile = z.object({
   inputsHash: z.string(),
   output: StyleOutput,
 });
+
+/**
+ * Runs tasks in parallel and throws the first error once all have ended.
+ * A wrong key or address would fail every request the same way, so it
+ * cancels the requests still waiting or running instead: it fails once, not
+ * once per chapter. Other errors let the rest finish, so their work is saved.
+ */
+async function allUntilFatal<T>(
+  items: T[],
+  parent: AbortSignal,
+  run: (item: T, index: number, signal: AbortSignal) => Promise<void>,
+): Promise<void> {
+  const stop = new AbortController();
+  const signal = AbortSignal.any([parent, stop.signal]);
+  let failure: { error: unknown } | null = null;
+  await Promise.all(
+    items.map((item, i) =>
+      run(item, i, signal).catch((error: unknown) => {
+        failure ??= { error };
+        if (isLlmError(error) && (error.kind === "config" || error.kind === "auth")) stop.abort();
+      }),
+    ),
+  );
+  if (failure) throw (failure as { error: unknown }).error;
+}
 
 function sha(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
@@ -167,6 +195,12 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
   // 2. Read every chapter pair (in parallel; the model's limit caps requests).
   const total = tasks.length + 2;
   let done = 0;
+  job.stages([
+    { key: "read", label: "Reading chapter pairs", total: tasks.length },
+    { key: "merge", label: "Merging findings" },
+    { key: "style", label: "Style rules", total: 1 },
+    { key: "save", label: "Building the knowledge base", total: 1 },
+  ]);
   const results = new Map<ReadTask, UnitFindings | null>();
   const pending: ReadTask[] = [];
   for (const t of tasks) {
@@ -183,7 +217,9 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
     }
   }
   job.progress(done, total, "Reading chapter pairs");
-  const read = async (t: ReadTask) => {
+  let readDone = done;
+  job.stage("read", { done: readDone, state: pending.length > 0 ? "running" : "done" });
+  const read = async (t: ReadTask, _i: number, signal: AbortSignal) => {
     job.checkpoint();
     try {
       const label = `read ${t.unitId}${t.part ? ` part ${t.part.index + 1}/${t.part.count}` : ""}`;
@@ -202,7 +238,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
           schema: ReadOutput,
           schemaName: "chapter_findings",
           answerBudget,
-          signal: job.signal,
+          signal,
           onUsage: job.addUsage,
         });
       // A chapter with many names can need more room than expected.
@@ -233,15 +269,15 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
       results.set(t, null);
     } finally {
       done++;
+      readDone++;
       job.progress(done, total, "Reading chapter pairs");
+      job.stage("read", { done: readDone });
     }
   };
-  if (pending.length > 0) {
-    await read(pending[0]!);
-    const settled = await Promise.allSettled(pending.slice(1).map(read));
-    const fatal = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
-    if (fatal) throw fatal.reason;
-  }
+  // All at once: each chapter is a different prompt, so there is no shared
+  // prefix worth warming a cache with first.
+  await allUntilFatal(pending, job.signal, read);
+  job.stage("read", { state: "done" });
   job.checkpoint();
 
   // 3. Group findings by code.
@@ -278,6 +314,13 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
   for (let i = 0; i < groups.length; i += batchSize) batches.push(groups.slice(i, i + batchSize));
   const decisions = new Map<string, MergeDecision>();
   job.progress(done, total, `Merging ${groups.length} findings`);
+  let mergeDone = 0;
+  job.stage("merge", {
+    label: `Merging ${groups.length} findings`,
+    total: batches.length,
+    done: 0,
+    state: batches.length > 0 ? "running" : "done",
+  });
 
   const validIds = new Set([...groups.map((g) => g.id), ...lockedIds.keys()]);
   const validateFor = (ids: string[]) => (out: MergeOutput) => {
@@ -297,7 +340,11 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
     return problems;
   };
   /** Decisions for some groups; a batch whose answer gets cut off is split in two. */
-  const decide = async (part: FindingGroup[], label: string): Promise<MergeDecision[]> => {
+  const decide = async (
+    part: FindingGroup[],
+    label: string,
+    signal: AbortSignal,
+  ): Promise<MergeDecision[]> => {
     job.checkpoint();
     const ids = part.map((g) => g.id);
     try {
@@ -323,7 +370,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
         schemaName: "merge_decisions",
         answerBudget: Math.min(cap, 2 * perDecision * part.length + 300),
         validate: validateFor(ids),
-        signal: job.signal,
+        signal,
         onUsage: job.addUsage,
       });
       return res.value.decisions;
@@ -332,8 +379,8 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
         job.log(`${label}: the answer was cut off; splitting the batch`);
         const mid = Math.ceil(part.length / 2);
         return [
-          ...(await decide(part.slice(0, mid), `${label} (first half)`)),
-          ...(await decide(part.slice(mid), `${label} (second half)`)),
+          ...(await decide(part.slice(0, mid), `${label} (first half)`, signal)),
+          ...(await decide(part.slice(mid), `${label} (second half)`, signal)),
         ];
       }
       if (
@@ -351,7 +398,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
       return parsed?.success ? parsed.data.decisions.filter((d) => ids.includes(d.group)) : [];
     }
   };
-  const runBatch = async (batch: FindingGroup[], n: number) => {
+  const runBatch = async (batch: FindingGroup[], n: number, signal: AbortSignal) => {
     job.checkpoint();
     const ids = batch.map((g) => g.id);
     const hash = sha([
@@ -366,20 +413,25 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
     const cached = await readJson(file, MergeFile).catch(() => undefined);
     let output: MergeOutput | null = cached && cached.inputsHash === hash ? cached.output : null;
     if (!output) {
-      output = { decisions: await decide(batch, `merge batch ${n + 1}/${batches.length}`) };
+      output = {
+        decisions: await decide(batch, `merge batch ${n + 1}/${batches.length}`, signal),
+      };
       await writeJson(file, MergeFile, { schemaVersion: 1, batch: ids, inputsHash: hash, output });
     }
     for (const d of output.decisions)
       if (ids.includes(d.group) && !decisions.has(d.group)) decisions.set(d.group, d);
+    mergeDone++;
+    job.stage("merge", { done: mergeDone });
   };
+  // The first batch runs alone, so the rest find the shared index already cached.
   if (batches.length > 0) {
-    await runBatch(batches[0]!, 0);
-    const settled = await Promise.allSettled(batches.slice(1).map((b, i) => runBatch(b, i + 1)));
-    const fatal = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
-    if (fatal) throw fatal.reason;
+    await runBatch(batches[0]!, 0, job.signal);
+    await allUntilFatal(batches.slice(1), job.signal, (b, i, signal) => runBatch(b, i + 1, signal));
   }
   done++;
+  job.stage("merge", { state: "done" });
   job.progress(done, total, "Summarizing style");
+  job.stage("style", { state: styleGroups.length > 0 ? "running" : "skipped" });
   job.checkpoint();
 
   // 5. Style rules.
@@ -426,6 +478,9 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
     }
   }
 
+  if (styleGroups.length > 0) job.stage("style", { state: "done", done: 1 });
+  job.stage("save", { state: "running" });
+
   // 6. Assemble the knowledge base and re-apply your edits.
   const resolution = resolveDecisions(groups, decisions, lockedIds);
   const kb = assembleKb({
@@ -438,6 +493,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
   });
   await writeJson(app.paths.pairKb(pid, pairId), Kb, kb);
   done++;
+  job.stage("save", { state: "done", done: 1 });
   job.progress(
     done,
     total,
@@ -473,4 +529,68 @@ export async function phase1Estimate(app: AppContext, pid: string, pairId: strin
   }
   const inputTokens = Math.round(words * 1.4 + units * 1500);
   return { units, inputTokens, outputTokens: Math.round(units * 1500 + 3000) };
+}
+
+// ---------------------------------------------------------------------------
+// What each chapter pair produced, for watching phase 1 while it runs
+// ---------------------------------------------------------------------------
+
+function findingsFilesFor(names: string[], position: number): string[] {
+  return names.filter((n) => n === `u${position}.json` || n.startsWith(`u${position}.p`)).sort();
+}
+
+/** Every included chapter pair with whether it has been read and what it found. */
+export async function phase1Chapters(app: AppContext, pid: string, pairId: string) {
+  const alignment = await loadAlignment(app, pid, pairId);
+  const titles = async (side: "source" | "target", depth: number) =>
+    new Map(
+      segmentsAt(await loadStructure(app, pid, pairId, side), depth).map((s) => [s.id, s.title]),
+    );
+  const source = await titles("source", alignment.tocDepthSource);
+  const target = await titles("target", alignment.tocDepthTarget);
+  const dir = app.paths.phase1FindingsDir(pid, pairId);
+  const names = await listDir(dir);
+  const chapters = [];
+  for (const [position, unit] of alignment.units.entries()) {
+    if (!unit.include || unit.source.length === 0 || unit.target.length === 0) continue;
+    let findings = 0;
+    let styleNotes = 0;
+    let parts = 0;
+    for (const name of findingsFilesFor(names, position)) {
+      const file = await readJson(path.join(dir, name), FindingsFile).catch(() => undefined);
+      if (!file) continue;
+      parts++;
+      findings += file.output.findings.length;
+      styleNotes += file.output.styleNotes.length;
+    }
+    chapters.push({
+      position,
+      unitId: unit.id,
+      source: unit.source.map((id) => source.get(id) ?? id),
+      target: unit.target.map((id) => target.get(id) ?? id),
+      read: parts > 0,
+      findings,
+      styleNotes,
+    });
+  }
+  return { chapters };
+}
+
+/** What the AI noted in one chapter pair (all parts of a long chapter together). */
+export async function phase1ChapterFindings(
+  app: AppContext,
+  pid: string,
+  pairId: string,
+  position: number,
+) {
+  const dir = app.paths.phase1FindingsDir(pid, pairId);
+  const findings: Finding[] = [];
+  const styleNotes: StyleNote[] = [];
+  for (const name of findingsFilesFor(await listDir(dir), position)) {
+    const file = await readJson(path.join(dir, name), FindingsFile).catch(() => undefined);
+    if (!file) continue;
+    findings.push(...file.output.findings);
+    styleNotes.push(...file.output.styleNotes);
+  }
+  return { findings, styleNotes };
 }

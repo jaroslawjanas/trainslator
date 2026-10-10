@@ -19,6 +19,7 @@ import {
 } from "../prompts/phase2.ts";
 import type { AppContext } from "../server/context.ts";
 import { loadBookStructure, loadSetup, referenceSelection } from "../services/books.ts";
+import { saveKnowledge } from "../services/history.ts";
 import { segmentsAt } from "../services/pairs.ts";
 import { UserError } from "../services/projects.ts";
 import { nowIso, Usage } from "../shared/schemas/common.ts";
@@ -125,6 +126,16 @@ async function committedSteps(app: AppContext, pid: string, bookId: string): Pro
   return n;
 }
 
+/** The knowledge base after the last chapter read, which reading on or reviewing again starts from. */
+export async function latestSnapshot(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+): Promise<string | null> {
+  const n = await committedSteps(app, pid, bookId);
+  return n > 0 ? app.paths.phase2Snapshot(pid, bookId, n - 1) : null;
+}
+
 export async function loadSteps(app: AppContext, pid: string, bookId: string): Promise<StepFile[]> {
   const n = await committedSteps(app, pid, bookId);
   const out: StepFile[] = [];
@@ -133,6 +144,34 @@ export async function loadSteps(app: AppContext, pid: string, bookId: string): P
     if (s) out.push(s);
   }
   return out;
+}
+
+/** Your own changes to the book's knowledge base. */
+export async function readOverrides(app: AppContext, pid: string, bookId: string) {
+  return (
+    (await readJson(app.paths.bookKbOverrides(pid, bookId), KbOverrides).catch(() => undefined)) ??
+    emptyOverrides()
+  );
+}
+
+const StartMarker = z.object({ jobId: z.string() });
+
+/**
+ * A job's one-time preparation (saving, clearing), done once per job: a
+ * resumed job keeps what it read since.
+ */
+async function oncePerJob(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  jobId: string,
+  prepare: () => Promise<void>,
+): Promise<void> {
+  const file = app.paths.phase2StartMarker(pid, bookId);
+  const marker = await readJson(file, StartMarker).catch(() => undefined);
+  if (marker?.jobId === jobId) return;
+  await prepare();
+  await writeJson(file, StartMarker, { jobId });
 }
 
 /** Removes everything from step `from` on (for "re-run from chapter k"). */
@@ -210,8 +249,27 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
   const steps = await planSteps(app, pid, bookId, chapterTarget);
   if (steps.length === 0)
     throw new UserError("No chapters are selected for phase 2 (see the book's setup).");
-  const fromStep = typeof job.job.params.fromStep === "number" ? job.job.params.fromStep : null;
-  if (fromStep !== null) await dropFrom(app, pid, bookId, fromStep);
+  const params = job.job.params;
+  const fromStep = typeof params.fromStep === "number" ? params.fromStep : null;
+  const rebuild = params.rebuild === true;
+  // Reading again (all of it, from a chapter, or just the review) asks the
+  // models anew instead of reusing saved answers to the same requests.
+  const fresh = rebuild || fromStep !== null || params.again === true;
+  await oncePerJob(app, pid, bookId, job.job.id, async () => {
+    if (rebuild) {
+      await saveKnowledge(app, pid, bookId, "rebuild");
+      if (params.dropOwn === true) await removePath(app.paths.bookKbOverrides(pid, bookId));
+      await dropFrom(app, pid, bookId, 0);
+      await writeJson(
+        app.paths.bookKb(pid, bookId),
+        Kb,
+        applyOverrides(emptyKb("book", book.title), await readOverrides(app, pid, bookId)),
+      );
+      app.events.changed(pid, "kb", bookId);
+    } else if (fromStep !== null) {
+      await dropFrom(app, pid, bookId, fromStep);
+    }
+  });
   const start = Math.min(await committedSteps(app, pid, bookId), steps.length);
 
   book = await app.projects.saveBook(pid, {
@@ -232,10 +290,13 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
     );
     if (s?.synopsis) synopses.push({ title: s.title, synopsis: s.synopsis });
   }
-  const loadOverrides = async () =>
-    (await readJson(app.paths.bookKbOverrides(pid, bookId), KbOverrides).catch(() => undefined)) ??
-    emptyOverrides();
+  const loadOverrides = () => readOverrides(app, pid, bookId);
   const total = steps.length + 1;
+  job.stages([
+    { key: "chapters", label: "Reading chapters", total: steps.length },
+    { key: "review", label: "Final review of the knowledge base", total: 1 },
+  ]);
+  job.stage("chapters", { done: start, state: start < steps.length ? "running" : "done" });
 
   for (let s = start; s < steps.length; s++) {
     job.checkpoint();
@@ -285,6 +346,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
             return rescued && { synopsis: rescued.synopsis, edits: rescued.edits };
           },
           promptCacheKey: `${pid}:phase2`,
+          useCache: !fresh,
           signal: job.signal,
           onUsage: job.addUsage,
         });
@@ -353,11 +415,14 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
       phase2: { ...book.phase2, stepsDone: s + 1 },
     });
     app.events.changed(pid, "kb", bookId);
+    job.stage("chapters", { done: s + 1 });
   }
+  job.stage("chapters", { state: "done" });
 
   // Final review, in two batches (names, then terms and wordplay).
   job.checkpoint();
   job.progress(steps.length, total, "Final review");
+  job.stage("review", { state: "running" });
   const overrides = await loadOverrides();
   working = applyOverrides(working, overrides);
   const reviewHash = sha([
@@ -370,7 +435,9 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
   const existingReview = await readJson(app.paths.phase2Review(pid, bookId), ReviewFile).catch(
     () => undefined,
   );
-  if (working.entries.length > 0 && existingReview?.inputsHash !== reviewHash) {
+  // Asked to review again: even with the same knowledge base and settings.
+  const reviewAgain = params.again === true;
+  if (working.entries.length > 0 && (reviewAgain || existingReview?.inputsHash !== reviewHash)) {
     const allOutcomes: ReturnType<typeof outcomeRows> = [];
     for (const family of ["names", "expressions"] as const) {
       const ids = promptIds(working);
@@ -405,6 +472,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
             schemaName: "review_edits",
             answerBudget,
             validate: (out) => editProblems(working, out.edits, ctx),
+            useCache: !fresh,
             signal: job.signal,
             onUsage: job.addUsage,
           });
@@ -437,6 +505,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
   }
   const finalKb = applyOverrides(working, await loadOverrides());
   await writeJson(app.paths.bookKb(pid, bookId), Kb, finalKb);
+  job.stage("review", { state: "done", done: 1 });
   job.progress(
     total,
     total,

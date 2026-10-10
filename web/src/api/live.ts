@@ -22,6 +22,15 @@ function onJob(client: QueryClient, job: Job, previous: Job | undefined): void {
     const others = list.filter((j) => j.id !== job.id);
     return { jobs: [job, ...others] };
   });
+  // When a job starts or stops, the pages about its book or pair must reload
+  // (e.g. "Not run yet" becomes "Done").
+  if (previous?.status !== job.status) {
+    void client.invalidateQueries({ queryKey: ["project", job.projectId] });
+    void client.invalidateQueries({ queryKey: ["pair", job.targetId] });
+    void client.invalidateQueries({ queryKey: ["book", job.targetId] });
+    void client.invalidateQueries({ queryKey: ["target", job.targetId] });
+    void client.invalidateQueries({ queryKey: ["job-activity", job.id] });
+  }
   const finished = ["done", "done_with_errors", "failed", "cancelled", "paused"].includes(
     job.status,
   );
@@ -49,6 +58,13 @@ export function useLiveEvents(): void {
   const client = useQueryClient();
   useEffect(() => {
     const source = new EventSource("/api/events");
+    // A reconnect means the server may have restarted: jobs that were running
+    // are now interrupted, and anything shown may be out of date.
+    let opened = false;
+    source.addEventListener("open", () => {
+      if (opened) void client.invalidateQueries();
+      opened = true;
+    });
     const known = new Map<string, Job>();
     const seed = client.getQueryData<{ jobs: Job[] }>(["jobs"]);
     for (const j of seed?.jobs ?? []) known.set(j.id, j);

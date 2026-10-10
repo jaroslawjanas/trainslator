@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import type { CallLogEntry } from "../../llm/log.ts";
 import { addUsage, emptyUsage, type Usage } from "../../shared/schemas/common.ts";
 import type { JobEvent } from "../../shared/schemas/jobs.ts";
 import type { AppContext } from "../context.ts";
@@ -11,6 +12,46 @@ export function jobRoutes(app: AppContext): Hono {
   r.get("/", (c) => {
     const projectId = c.req.query("projectId");
     return c.json({ jobs: app.runner.list(projectId || undefined).slice(0, 200) });
+  });
+
+  /** Finished requests from before this server started, read from the log once per job. */
+  const fromLog = new Map<string, CallLogEntry[]>();
+
+  // A job's requests: waiting or running now, and finished (newest first).
+  r.get("/:id/activity", async (c) => {
+    const id = idParam(c, "id");
+    const job = app.runner.get(id);
+    if (!job) throw new HttpError(404, "not_found", "No such job.");
+    if (!fromLog.has(id)) {
+      const logged = await app.rt.log.read(job.projectId).catch(() => []);
+      fromLog.set(
+        id,
+        logged.filter((e) => e.jobId === id),
+      );
+    }
+    const byId = new Map<string, CallLogEntry>();
+    for (const e of fromLog.get(id) ?? []) byId.set(e.id, e);
+    for (const e of app.rt.activity.finishedFor(id) ?? []) byId.set(e.id, e);
+    const finished = [...byId.values()]
+      .sort((a, b) => b.at.localeCompare(a.at))
+      .slice(0, 400)
+      .map((e) => ({
+        id: e.id,
+        at: e.at,
+        step: e.step,
+        label: e.label,
+        modelName: e.modelName,
+        attempt: e.attempt,
+        kind: e.kind,
+        finishReason: e.finishReason,
+        latencyMs: e.latencyMs,
+        waitMs: e.waitMs,
+        promptTokens: e.usage.promptTokens,
+        cachedTokens: e.usage.cachedTokens,
+        completionTokens: e.usage.completionTokens,
+        error: e.error,
+      }));
+    return c.json({ active: app.rt.activity.activeFor(id), finished });
   });
 
   const action = (name: "pause" | "resume" | "cancel") =>
@@ -73,23 +114,45 @@ export function usageRoutes(app: AppContext): Hono {
   const r = new Hono();
   r.get("/:pid", async (c) => {
     const pid = idParam(c, "pid");
-    const calls = await app.rt.log.read(pid);
+    const { usageResetAt: since } = await app.projects.get(pid);
+    // Claude Code runs on the subscription: its requests cost nothing, also
+    // those logged before that was so.
+    const settings = app.settings.get();
+    const subscription = new Set(
+      settings.models
+        .filter(
+          (m) => settings.connections.find((x) => x.id === m.connectionId)?.kind === "claude_code",
+        )
+        .map((m) => m.id),
+    );
+    const calls = (await app.rt.log.read(pid))
+      .filter((call) => !since || call.at >= since)
+      .map((call) =>
+        subscription.has(call.modelId) ? { ...call, usage: { ...call.usage, cost: 0 } } : call,
+      );
     const byStep = new Map<string, Usage & { cacheHits: number }>();
     let total = emptyUsage();
     for (const call of calls) {
-      const current = byStep.get(call.step) ?? { ...emptyUsage(), cacheHits: 0 };
+      // The advisor gets its own row, whichever step asked it.
+      const key = call.params.advisor === true ? "advisor" : call.step;
+      const current = byStep.get(key) ?? { ...emptyUsage(), cacheHits: 0 };
       const next = {
         ...addUsage(current, call.usage),
         cacheHits: current.cacheHits + (call.kind === "cache_hit" ? 1 : 0),
       };
-      byStep.set(call.step, next);
+      byStep.set(key, next);
       total = addUsage(total, call.usage);
     }
     return c.json({
+      since,
       total,
       byStep: Object.fromEntries(byStep),
       recent: calls.slice(-100).reverse(),
     });
+  });
+  r.post("/:pid/reset", async (c) => {
+    const project = await app.projects.resetUsage(idParam(c, "pid"));
+    return c.json({ since: project.usageResetAt });
   });
   return r;
 }

@@ -8,6 +8,7 @@ import {
 } from "../kb/overrides.ts";
 import { promptIds, renderKb } from "../kb/render.ts";
 import { estimateTokens } from "../llm/tokens.ts";
+import { latestSnapshot } from "../pipeline/phase2.ts";
 import type { AppContext } from "../server/context.ts";
 import { nowIso } from "../shared/schemas/common.ts";
 import {
@@ -92,6 +93,43 @@ export async function editEntry(app: AppContext, scope: KbScope, entry: KbEntry)
       origin: entry.origin,
     });
   });
+}
+
+/**
+ * Saves an entry without locking it: your answer goes into the knowledge
+ * base (an open question with a translation is settled), but later runs may
+ * still change the entry. For a book it also goes into phase 2's latest
+ * snapshot, so reading on or reviewing again starts from it.
+ */
+export async function saveUnlocked(app: AppContext, scope: KbScope, entry: KbEntry): Promise<Kb> {
+  assertNotBusy(app, scope);
+  const f = files(app, scope);
+  return withFileLock(f.overrides, () =>
+    withFileLock(f.kb, async () => {
+      const { kb, overrides } = await loadKb(app, scope);
+      if (overrides.entries[entry.id])
+        throw new UserError("This entry is locked. Unlock it first, or save it locked.");
+      if (!kb.entries.some((e) => e.id === entry.id)) throw new NotFoundError("Entry");
+      const stillOpen = entry.status === "open" && !entry.target;
+      const saved: KbEntry = {
+        ...entry,
+        status: stillOpen ? "open" : "auto",
+        question: stillOpen ? entry.question : null,
+        updatedAt: nowIso(),
+      };
+      const put = (k: Kb): Kb => ({
+        ...k,
+        entries: k.entries.map((e) => (e.id === saved.id ? saved : e)),
+      });
+      if (scope.kind === "book") {
+        const file = await latestSnapshot(app, scope.pid, scope.id);
+        const snapshot = file ? await readJson(file, Kb).catch(() => undefined) : undefined;
+        if (file && snapshot?.entries.some((e) => e.id === saved.id))
+          await writeJson(file, Kb, put(snapshot));
+      }
+      return writeJson(f.kb, Kb, put(kb));
+    }),
+  );
 }
 
 export async function addEntry(

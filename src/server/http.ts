@@ -18,10 +18,16 @@ export class HttpError extends Error {
   }
 }
 
-export async function jsonBody<S extends z.ZodType>(c: Context, schema: S): Promise<z.output<S>> {
+export async function jsonBody<S extends z.ZodType>(
+  c: Context,
+  schema: S,
+  options: { optional?: boolean } = {},
+): Promise<z.output<S>> {
   let raw: unknown;
   try {
-    raw = await c.req.json();
+    // An empty body counts as {} where the body is optional.
+    const text = await c.req.text();
+    raw = options.optional && !text.trim() ? {} : JSON.parse(text);
   } catch {
     throw new HttpError(400, "bad_json", "The request body isn't valid JSON.");
   }
