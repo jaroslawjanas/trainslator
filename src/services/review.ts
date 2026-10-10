@@ -7,8 +7,18 @@ import { checkUnitTranslation } from "../pipeline/validate.ts";
 import { FRAGMENT_END, FRAGMENT_START, RewriteOutput, rewriteBlocks } from "../prompts/rewrite.ts";
 import type { AppContext } from "../server/context.ts";
 import { unicodeScriptsFor } from "../shared/languages.ts";
+import { nowIso } from "../shared/schemas/common.ts";
 import type { UnitStatus } from "../shared/schemas/translation.ts";
-import { editSavedUnit, loadSavedTranslation, revertSavedUnit } from "./history.ts";
+import { ManualEdits } from "../shared/schemas/translation.ts";
+import { findMatches, type MatchOptions } from "../shared/search.ts";
+import { updateJson } from "../store/json.ts";
+import {
+  editSavedUnit,
+  editSavedUnits,
+  loadSavedTranslation,
+  revertSavedUnit,
+  saveTranslation,
+} from "./history.ts";
 import { NotFoundError, UserError } from "./projects.ts";
 import {
   checkOwnText,
@@ -103,6 +113,194 @@ export async function reviewChapters(
       })
       .filter((c) => c.units > 0),
   };
+}
+
+/** The English, as a "version" to search. */
+export const SOURCE = "source";
+
+/** Most results returned for one search. */
+const MAX_RESULTS = 300;
+
+/** A little text on each side of the first match. */
+function snippet(text: string, match: { start: number; end: number }) {
+  const from = Math.max(0, match.start - 60);
+  const to = Math.min(text.length, match.end + 90);
+  return {
+    before: `${from > 0 ? "…" : ""}${text.slice(from, match.start)}`,
+    match: text.slice(match.start, match.end),
+    after: `${text.slice(match.end, to)}${to < text.length ? "…" : ""}`,
+  };
+}
+
+/**
+ * Finds a text in the passages of the given versions ("source" for the
+ * English), ignoring case and accents: in one chapter, or the whole book in
+ * reading order. One result per passage and version.
+ */
+export async function searchReview(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  query: string,
+  versions: string[],
+  chapterId: string | null,
+  options: MatchOptions = {},
+) {
+  const plan = await loadPlan(app, pid, bookId);
+  if (!plan) return { results: [], total: 0 };
+  const units = await loadAllUnits(app, pid, bookId);
+  const cells = new Map(
+    await Promise.all(
+      versions
+        .filter((v) => v !== SOURCE)
+        .map(async (v) => [v, await versionCells(app, pid, bookId, v)] as const),
+    ),
+  );
+  const results = [];
+  let total = 0;
+  for (const chapter of plan.chapters) {
+    if (chapterId && chapter.id !== chapterId) continue;
+    for (const key of chapter.chunks.flatMap((i) => plan.chunks[i]?.unitKeys ?? [])) {
+      const unit = units.get(key);
+      if (!unit) continue;
+      for (const version of versions) {
+        const raw = version === SOURCE ? unit.text : cells.get(version)?.(key).text;
+        if (!raw) continue;
+        const text = stripPlaceholders(raw);
+        const matches = findMatches(text, query, options);
+        if (matches.length === 0) continue;
+        total++;
+        if (results.length < MAX_RESULTS)
+          results.push({
+            chapterId: chapter.id,
+            chapterTitle: chapter.title,
+            key,
+            version,
+            matches: matches.length,
+            ...snippet(text, matches[0]!),
+          });
+      }
+    }
+  }
+  return { results, total };
+}
+
+/** Formatting placeholders, which a replacement never touches. */
+const TAG_SPLIT = /(<\/?g\d+>|<x\d+\/>)/;
+const TAG_TEST = /<\/?g\d+>|<x\d+\/>/;
+
+/**
+ * Replaces the query in the text between formatting tags; the tags stay as
+ * they are. `skipped` counts matches that cross a tag, which are left alone.
+ */
+export function replaceInText(
+  raw: string,
+  query: string,
+  replacement: string,
+  options: MatchOptions,
+): { text: string; count: number; skipped: number } {
+  let count = 0;
+  const parts = raw.split(TAG_SPLIT).map((part, i) => {
+    if (i % 2 === 1) return part;
+    const matches = findMatches(part, query, options);
+    if (matches.length === 0) return part;
+    count += matches.length;
+    let out = "";
+    let pos = 0;
+    for (const m of matches) {
+      out += part.slice(pos, m.start) + replacement;
+      pos = m.end;
+    }
+    return out + part.slice(pos);
+  });
+  const all = findMatches(stripPlaceholders(raw), query, options).length;
+  return { text: parts.join(""), count, skipped: Math.max(0, all - count) };
+}
+
+export interface ReplaceRequest {
+  query: string;
+  replacement: string;
+  /** Versions to change; the English ("source") never is. */
+  versions: string[];
+  /** One chapter, or null for the whole book. */
+  chapterId: string | null;
+  /** One passage only (the "Replace" button), or null for all. */
+  key: string | null;
+  options: MatchOptions;
+  /** Count what would change, without changing anything. */
+  dryRun: boolean;
+}
+
+/**
+ * Replaces a text in the translations: in one passage, one chapter or the
+ * whole book. Before the current translation changes it is saved in History,
+ * so the replacement can be undone by restoring it.
+ */
+export async function replaceInReview(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  req: ReplaceRequest,
+): Promise<{ passages: number; replaced: number; skipped: number }> {
+  const versions = req.versions.filter((v) => v !== SOURCE);
+  if (versions.length === 0)
+    throw new UserError("Choose a translation to replace in; the English isn't changed.");
+  if (TAG_TEST.test(req.replacement))
+    throw new UserError("The replacement can't contain formatting tags.");
+  const plan = await loadPlan(app, pid, bookId);
+  if (!plan) throw new UserError("Nothing is translated yet.");
+  const keys = req.key
+    ? [req.key]
+    : plan.chapters
+        .filter((c) => !req.chapterId || c.id === req.chapterId)
+        .flatMap((c) => c.chunks.flatMap((i) => plan.chunks[i]?.unitKeys ?? []));
+
+  let passages = 0;
+  let replaced = 0;
+  let skipped = 0;
+  const changes = new Map<string, Record<string, { text: string; previous: string }>>();
+  for (const version of versions) {
+    const cells = await versionCells(app, pid, bookId, version);
+    const changed: Record<string, { text: string; previous: string }> = {};
+    for (const key of keys) {
+      const raw = cells(key).text;
+      if (!raw) continue;
+      const result = replaceInText(raw, req.query, req.replacement, req.options);
+      skipped += result.skipped;
+      if (result.count === 0) continue;
+      passages++;
+      replaced += result.count;
+      changed[key] = { text: result.text, previous: raw };
+    }
+    if (Object.keys(changed).length > 0) changes.set(version, changed);
+  }
+  if (req.dryRun) return { passages, replaced, skipped };
+
+  for (const [version, changed] of changes) {
+    if (version === CURRENT) {
+      await saveTranslation(app, pid, bookId, "replace");
+      await updateJson(
+        app.paths.phase3Edits(pid, bookId),
+        ManualEdits,
+        () => ({ schemaVersion: 1 as const, edits: {} }),
+        (m) => {
+          const edits = { ...m.edits };
+          for (const [key, c] of Object.entries(changed))
+            edits[key] = { text: c.text, at: nowIso(), previous: c.previous };
+          return { ...m, edits };
+        },
+      );
+    } else {
+      await editSavedUnits(
+        app,
+        pid,
+        bookId,
+        version,
+        Object.fromEntries(Object.entries(changed).map(([k, c]) => [k, c.text])),
+      );
+    }
+  }
+  return { passages, replaced, skipped };
 }
 
 export async function reviewUnits(

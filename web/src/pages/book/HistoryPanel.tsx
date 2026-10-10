@@ -17,6 +17,7 @@ const REASONS: Record<SavedTranslationView["reason"], string> = {
   restore: "before another translation was restored",
   build: "when the EPUB was built",
   manual: "by you",
+  replace: "before text in it was replaced",
 };
 
 /** "Whole chapters, gpt-5, reasoning at effort high." */

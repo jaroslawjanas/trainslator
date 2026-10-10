@@ -12,6 +12,7 @@ import {
   Text,
   Tooltip,
 } from "@mantine/core";
+import { useDebouncedValue } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
 import {
   IconArrowBackUp,
@@ -22,6 +23,7 @@ import {
   IconLayoutSidebarLeftExpand,
   IconPencil,
   IconPlus,
+  IconSearch,
 } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
@@ -29,8 +31,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { del, get, put } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
-import { UnitText } from "../../components/PlaceholderText.tsx";
+import { type Highlight, UnitText } from "../../components/PlaceholderText.tsx";
 import { displayTitle, formatDate, plural } from "../../lib/format.ts";
+import { MIN_QUERY, ReviewSearch, type SearchResult, type SearchScope } from "./ReviewSearch.tsx";
 import { RewriteModal } from "./RewriteModal.tsx";
 import type { HistoryView, ReviewUnit } from "./types.ts";
 
@@ -206,6 +209,7 @@ function Cell({
   column,
   others,
   showTags,
+  highlight,
   onEdit,
   onCopy,
   onRevert,
@@ -215,6 +219,8 @@ function Cell({
   /** The other versions shown, to copy this passage to. */
   others: Column[];
   showTags: boolean;
+  /** The text being searched for, marked where it occurs. */
+  highlight?: Highlight;
   onEdit: () => void;
   onCopy: (to: Column) => void;
   onRevert: () => void;
@@ -223,7 +229,12 @@ function Cell({
     return (
       <div className="tr-cmp-cell" data-kind="source">
         <div className="tr-cmp-label">{column.label}</div>
-        <UnitText text={unit.source} placeholders={unit.placeholders} showTags={showTags} />
+        <UnitText
+          text={unit.source}
+          placeholders={unit.placeholders}
+          showTags={showTags}
+          highlight={highlight}
+        />
       </div>
     );
   const cell = unit.versions[column.id];
@@ -231,7 +242,12 @@ function Cell({
     <div className="tr-cmp-cell" data-kind="version">
       <div className="tr-cmp-label">{column.label}</div>
       {cell?.text ? (
-        <UnitText text={cell.text} placeholders={unit.placeholders} showTags={showTags} />
+        <UnitText
+          text={cell.text}
+          placeholders={unit.placeholders}
+          showTags={showTags}
+          highlight={highlight}
+        />
       ) : (
         <div className="tr-page-text tr-pending">
           {cell?.status === "refused" ? "The model refused this passage." : "Not translated."}
@@ -327,6 +343,40 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   };
   const [filter, setFilter] = useState<"all" | "different">("all");
   const [editing, setEditing] = useState<{ unit: ReviewUnit; version: Column } | null>(null);
+  // Search: opened with the button or Ctrl+F, listed on the right.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [debounced] = useDebouncedValue(query, 300);
+  const [scope, setScope] = useState<SearchScope>("chapter");
+  const [exact, setExact] = useState(false);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [searchedChoice, setSearched] = useState<string[] | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  /** A passage to bring into view once its chapter is loaded. */
+  const [target, setTarget] = useState<{ key: string } | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
+  const openSearch = () => {
+    setSearchOpen(true);
+    requestAnimationFrame(() => {
+      searchInput.current?.focus();
+      searchInput.current?.select();
+    });
+  };
+  // Ctrl+F (Cmd+F) opens this search instead of the browser's.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => {
+          searchInput.current?.focus();
+          searchInput.current?.select();
+        });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -444,6 +494,19 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   const refresh = () => {
     void client.invalidateQueries({ queryKey: ["target", bookId] });
   };
+  // By default every open column is searched.
+  const searchedIds = (searchedChoice ?? cols).filter((id) => cols.includes(id));
+  const searched = searchedIds.length > 0 ? searchedIds : cols;
+  const highlightFor = (id: string): Highlight | undefined =>
+    searchOpen && debounced.trim().length >= MIN_QUERY && searched.includes(id)
+      ? { query: debounced, exact, wholeWord }
+      : undefined;
+  const pick = (r: SearchResult) => {
+    if (r.chapterId !== chapterId) setParam("chapter", r.chapterId);
+    // The passage may read the same in every version.
+    if (filter === "different") setFilter("all");
+    setTarget({ key: r.key });
+  };
 
   const copy = async (unit: ReviewUnit, from: Column, to: Column) => {
     try {
@@ -480,6 +543,20 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
     overscan: 6,
     scrollMargin: offset,
   });
+  // Bring a picked search result into view, once its chapter has loaded.
+  useEffect(() => {
+    if (!target) return;
+    const index = units.findIndex((u) => u.key === target.key);
+    if (index < 0) return;
+    virtualizer.scrollToIndex(index, { align: "center" });
+    setFocused(target.key);
+    setTarget(null);
+  }, [target, units, virtualizer]);
+  useEffect(() => {
+    if (!focused) return;
+    const t = setTimeout(() => setFocused(null), 2500);
+    return () => clearTimeout(t);
+  }, [focused]);
 
   if (chapters.isLoading) return <Loader size="sm" />;
   if (list.length === 0)
@@ -496,7 +573,11 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   } as React.CSSProperties;
   const current = list[at];
   return (
-    <Box className="tr-review" data-collapsed={collapsed || undefined}>
+    <Box
+      className="tr-review"
+      data-collapsed={collapsed || undefined}
+      data-search={searchOpen || undefined}
+    >
       <ChapterList
         list={list}
         selected={chapterId}
@@ -529,6 +610,16 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
             </Text>
           </Group>
           <Group gap="lg">
+            <Tooltip label="Ctrl+F">
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<IconSearch size={14} />}
+                onClick={openSearch}
+              >
+                Search
+              </Button>
+            </Tooltip>
             {versions.length > 1 && (
               <Switch
                 size="xs"
@@ -639,6 +730,7 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
                 ref={virtualizer.measureElement}
                 className="tr-spread-row tr-cmp-row"
                 data-role={unit.role}
+                data-focused={focused === unit.key || undefined}
                 data-differs={
                   (markDifferences && versions.length > 1 && differs(unit, versions)) || undefined
                 }
@@ -658,6 +750,7 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
                     column={col}
                     others={columns.filter((o) => o.id !== col.id && o.id !== SOURCE)}
                     showTags={showTags}
+                    highlight={highlightFor(col.id)}
                     onEdit={() => setEditing({ unit, version: col })}
                     onCopy={(to) => copy(unit, col, to)}
                     onRevert={() => revert(unit, col)}
@@ -668,6 +761,29 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
           })}
         </div>
       </Box>
+      {searchOpen && (
+        <ReviewSearch
+          pid={pid}
+          bookId={bookId}
+          chapterId={chapterId}
+          columns={columns}
+          query={query}
+          onQuery={setQuery}
+          debounced={debounced}
+          scope={scope}
+          onScope={setScope}
+          searched={searched}
+          onSearched={setSearched}
+          exact={exact}
+          onExact={setExact}
+          wholeWord={wholeWord}
+          onWholeWord={setWholeWord}
+          onReplaced={refresh}
+          inputRef={searchInput}
+          onPick={pick}
+          onClose={() => setSearchOpen(false)}
+        />
+      )}
       <RewriteModal
         pid={pid}
         bookId={bookId}

@@ -240,6 +240,26 @@ export function editSavedUnit(
   }));
 }
 
+/** Your texts for several passages of a saved translation at once (checked by the caller). */
+export function editSavedUnits(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  id: string,
+  texts: Record<string, string>,
+): Promise<void> {
+  return updateSaved(app, pid, bookId, id, (c) => {
+    const edits = { ...c.edits };
+    for (const [key, text] of Object.entries(texts))
+      edits[key] = {
+        text,
+        at: nowIso(),
+        previous: c.edits[key]?.text ?? c.units[key]?.text ?? null,
+      };
+    return { ...c, edits };
+  });
+}
+
 /** Back to the AI's text for one passage of a saved translation. */
 export function revertSavedUnit(
   app: AppContext,

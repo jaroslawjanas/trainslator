@@ -1,4 +1,8 @@
 import { createElement, type ReactNode } from "react";
+import { findMatches, type MatchOptions } from "../../../src/shared/search.ts";
+
+/** What to mark in the text, and how to match it. */
+export type Highlight = { query: string } & MatchOptions;
 
 export interface PlaceholderInfo {
   n: number;
@@ -72,8 +76,33 @@ function parseTree(text: string, labels: Map<number, string>): Node | null {
   return root;
 }
 
-function render(node: Node | string, key: string, showTags: boolean): ReactNode {
-  if (typeof node === "string") return node;
+/** Text with the search matches marked. */
+function marked(text: string, key: string, highlight: Highlight | undefined): ReactNode {
+  if (!highlight) return text;
+  const matches = findMatches(text, highlight.query, highlight);
+  if (matches.length === 0) return text;
+  const out: ReactNode[] = [];
+  let pos = 0;
+  for (const m of matches) {
+    if (m.start > pos) out.push(text.slice(pos, m.start));
+    out.push(
+      <mark key={`${key}m${m.start}`} className="tr-hit">
+        {text.slice(m.start, m.end)}
+      </mark>,
+    );
+    pos = m.end;
+  }
+  if (pos < text.length) out.push(text.slice(pos));
+  return out;
+}
+
+function render(
+  node: Node | string,
+  key: string,
+  showTags: boolean,
+  highlight?: Highlight,
+): ReactNode {
+  if (typeof node === "string") return marked(node, key, highlight);
   if (node.label.startsWith("x:")) {
     const label = node.label.slice(2);
     const tag = showTags ? (
@@ -95,7 +124,7 @@ function render(node: Node | string, key: string, showTags: boolean): ReactNode 
       </span>
     );
   }
-  const children = node.children.map((c, i) => render(c, `${key}.${i}`, showTags));
+  const children = node.children.map((c, i) => render(c, `${key}.${i}`, showTags, highlight));
   const element = FORMAT[node.label];
   const inner = element
     ? createElement(element, { key: `${key}e` }, children)
@@ -145,17 +174,20 @@ export function UnitText({
   text,
   placeholders,
   showTags = false,
+  highlight,
 }: {
   text: string;
   placeholders: PlaceholderInfo[];
   showTags?: boolean;
+  /** Marks where a searched text is found. */
+  highlight?: Highlight;
 }) {
   const labels = new Map(placeholders.map((p) => [p.n, p.label]));
   const tree = parseTree(text, labels);
   return (
     <div className="tr-page-text">
       {tree
-        ? tree.children.map((c, i) => render(c, String(i), showTags))
+        ? tree.children.map((c, i) => render(c, String(i), showTags, highlight))
         : renderFlat(text, labels)}
     </div>
   );

@@ -59,7 +59,7 @@ export interface SavedTranslationView {
   id: string;
   number: number;
   savedAt: string;
-  reason: "run" | "redo" | "restore" | "build" | "manual";
+  reason: "run" | "redo" | "restore" | "build" | "manual" | "replace";
   modes: ("chunks" | "chapters")[];
   models: string[];
   reasoning: string[];

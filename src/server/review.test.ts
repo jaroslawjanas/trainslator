@@ -138,6 +138,79 @@ describe("review", () => {
     expect(refused.status).toBe(400);
   });
 
+  it("searches one chapter or the whole book, in the versions chosen", async () => {
+    const { base, saved, chapter } = await setup();
+    type Found = {
+      results: { chapterId: string; version: string; match: string; key: string }[];
+      total: number;
+    };
+    const search = (q: string, versions: string[], inChapter?: string) =>
+      srv!.json<Found>(
+        "GET",
+        `${base}/review/search?q=${encodeURIComponent(q)}&versions=${versions.join(",")}${inChapter ? `&chapter=${inChapter}` : ""}`,
+      );
+    // The English and the (uppercased) fake translation, case ignored.
+    const both = await search("keeper", ["source", "current"]);
+    expect(new Set(both.results.map((r) => r.version))).toEqual(new Set(["source", "current"]));
+    expect(both.results.find((r) => r.version === "current")!.match).toBe("KEEPER");
+    expect(both.total).toBe(both.results.length);
+    // Only the chosen versions, and only the open chapter when asked.
+    const savedOnly = await search("keeper", [saved]);
+    expect(savedOnly.results.every((r) => r.version === saved)).toBe(true);
+    const all = await search("the", ["source"]);
+    const one = await search("the", ["source"], chapter);
+    expect(one.results.every((r) => r.chapterId === chapter)).toBe(true);
+    expect(one.total).toBeLessThan(all.total);
+    expect((await srv!.call("GET", `${base}/review/search?q=&versions=source`)).status).toBe(400);
+  });
+
+  it("replaces text in the translations, never the English, and can be undone", async () => {
+    const { base, saved, chapter } = await setup();
+    const replace = (body: Record<string, unknown>) =>
+      srv!.json<{ passages: number; replaced: number; skipped: number }>(
+        "POST",
+        `${base}/review/replace`,
+        { query: "keeper", replacement: "LATARNIK", chapterId: chapter, ...body },
+      );
+    // Counted first, nothing changed.
+    const counted = await replace({ versions: ["source", "current"], dryRun: true });
+    expect(counted.passages).toBeGreaterThan(0);
+    let unit = keeper(await review(base, chapter, ["current", saved]));
+    expect(unit.versions.current!.text).toContain("KEEPER");
+
+    // One passage only, in the current translation; the saved one and the English stay.
+    await replace({ versions: ["current"], key: unit.key });
+    unit = keeper(await review(base, chapter, ["current", saved]));
+    expect(unit.versions.current).toMatchObject({ edited: true });
+    expect(unit.versions.current!.text).toContain("LATARNIK");
+    expect(unit.versions.current!.text).not.toContain("KEEPER");
+    expect(unit.versions[saved]!.text).toContain("KEEPER");
+    expect(unit.source).toContain("keeper");
+
+    // Replacing again: the current translation (now unlike any saved one) is saved
+    // first, so this replacement can be undone by restoring it.
+    await replace({ query: "the", replacement: "TEN", wholeWord: true, versions: ["current"] });
+    const history = await srv!.json<{ translations: { reason: string }[] }>(
+      "GET",
+      `${base}/history`,
+    );
+    expect(history.translations.map((t) => t.reason)).toEqual(["run", "replace"]);
+
+    // All of the chapter in the saved version.
+    const all = await replace({ versions: [saved] });
+    expect(all.replaced).toBeGreaterThan(0);
+    unit = keeper(await review(base, chapter, ["current", saved]));
+    expect(unit.versions[saved]!.text).toContain("LATARNIK");
+
+    // The English alone can't be replaced in.
+    const refused = await srv!.call("POST", `${base}/review/replace`, {
+      query: "keeper",
+      replacement: "x",
+      versions: ["source"],
+    });
+    expect(refused.status).toBe(400);
+  });
+
   it("rewrites a passage, or only a selected part, with or without context and knowledge", async () => {
     const { pid, bookId, base, chapter } = await setup();
     await writeJson(srv!.ctx.paths.bookKb(pid, bookId), Kb, {

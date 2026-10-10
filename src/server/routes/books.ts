@@ -23,10 +23,12 @@ import { UserError } from "../../services/projects.ts";
 import {
   CURRENT,
   editVersionUnit,
+  replaceInReview,
   revertVersionUnit,
   reviewChapters,
   reviewUnits,
   rewritePassage,
+  searchReview,
 } from "../../services/review.ts";
 import {
   acceptUnit,
@@ -211,6 +213,57 @@ export function bookRoutes(app: AppContext): Hono {
   );
 
   // Review: versions side by side ---------------------------------------------
+
+  r.get("/:pid/books/:bookId/review/search", async (c) => {
+    const q = (c.req.query("q") ?? "").trim();
+    const versions = (c.req.query("versions") ?? "").split(",").filter(Boolean);
+    const chapter = c.req.query("chapter") || null;
+    if (!q || q.length > 200)
+      throw new HttpError(400, "bad_request", "Search for 1 to 200 characters.");
+    if (versions.length === 0 || versions.length > 3 || !versions.every((v) => ID_RE.test(v)))
+      throw new HttpError(400, "bad_request", "Choose one to three versions to search.");
+    if (chapter && !ID_RE.test(chapter))
+      throw new HttpError(400, "bad_request", "Invalid chapter.");
+    const options = {
+      exact: c.req.query("exact") === "1",
+      wholeWord: c.req.query("words") === "1",
+    };
+    return c.json(
+      await searchReview(
+        app,
+        idParam(c, "pid"),
+        idParam(c, "bookId"),
+        q,
+        versions,
+        chapter,
+        options,
+      ),
+    );
+  });
+
+  r.post("/:pid/books/:bookId/review/replace", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    const body = await jsonBody(
+      c,
+      z.object({
+        query: z.string().trim().min(1).max(200),
+        replacement: z.string().max(2000),
+        versions: z.array(z.string().regex(ID_RE)).min(1).max(3),
+        chapterId: z.string().regex(ID_RE).nullable().default(null),
+        key: z.string().nullable().default(null),
+        exact: z.boolean().default(false),
+        wholeWord: z.boolean().default(false),
+        dryRun: z.boolean().default(false),
+      }),
+    );
+    const result = await replaceInReview(app, pid, bookId, {
+      ...body,
+      options: { exact: body.exact, wholeWord: body.wholeWord },
+    });
+    if (!body.dryRun) app.events.changed(pid, "phase3", bookId);
+    return c.json(result);
+  });
 
   r.get("/:pid/books/:bookId/review/chapters", async (c) => {
     const versions = (c.req.query("versions") ?? "").split(",").filter(Boolean);

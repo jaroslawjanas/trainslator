@@ -196,7 +196,7 @@ export const SavedTranslationContent = z.object({
 });
 export type SavedTranslationContent = z.infer<typeof SavedTranslationContent>;
 
-export const SaveReason = z.enum(["run", "redo", "restore", "build", "manual"]);
+export const SaveReason = z.enum(["run", "redo", "restore", "build", "manual", "replace"]);
 export type SaveReason = z.infer<typeof SaveReason>;
 
 /** A saved translation as listed in the history. */

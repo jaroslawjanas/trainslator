@@ -806,10 +806,90 @@ a.tr-context:hover {
   gap: 16px;
 }
 
+/* Review with the search open on the right. */
+.tr-review[data-search] {
+  grid-template-columns: minmax(180px, 230px) minmax(0, 1fr) minmax(260px, 330px);
+}
+
+.tr-review[data-collapsed][data-search] {
+  grid-template-columns: 34px minmax(0, 1fr) minmax(260px, 330px);
+}
+
+.tr-search {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* Only the result list gives way when the panel is full; the controls keep their size. */
+.tr-search > * {
+  flex-shrink: 0;
+}
+
+.tr-search > .tr-search-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  margin-top: 6px;
+}
+
+.tr-search-result {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 4px;
+}
+
+.tr-search-result:hover,
+.tr-search-result[data-active] {
+  background: var(--tr-desk);
+}
+
+.tr-search-where {
+  font-size: var(--mantine-font-size-xs);
+  color: var(--tr-graphite);
+  margin-bottom: 2px;
+}
+
+.tr-search-snippet {
+  font-family: var(--tr-serif);
+  font-size: 0.875rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+/* A search match, in the text and in the results. */
+.tr-hit {
+  background: color-mix(in srgb, var(--tr-ochre) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+
+/* The passage a search result led to, for a moment. */
+.tr-cmp-row[data-focused] {
+  background: var(--tr-desk);
+  border-radius: 4px;
+}
+
 @media (max-width: 62em) {
   .tr-review,
-  .tr-review[data-collapsed] {
+  .tr-review[data-collapsed],
+  .tr-review[data-search],
+  .tr-review[data-collapsed][data-search] {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .tr-search {
+    position: static;
+    max-height: 360px;
   }
   .tr-chapters {
     position: static;
