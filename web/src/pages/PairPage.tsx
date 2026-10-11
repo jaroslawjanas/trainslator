@@ -6,11 +6,13 @@ import { PageHeader } from "../components/PageHeader.tsx";
 import { displayTitle } from "../lib/format.ts";
 import { defaultPairStage, PAIR_STAGES } from "../lib/stages.ts";
 import { KbEditor } from "./kb/KbEditor.tsx";
+import { useSourceName } from "./ProjectPage.tsx";
 import { AlignmentPanel, type PairDetail } from "./pair/AlignmentPanel.tsx";
 import { Phase1Panel } from "./pair/Phase1Panel.tsx";
 
 export function PairPage() {
   const { pid = "", pairId = "", stage } = useParams();
+  const source = useSourceName(pid);
   const { data, isLoading, error } = useQuery({
     queryKey: ["pair", pairId],
     queryFn: () => get<PairDetail>(`/api/projects/${pid}/pairs/${pairId}`),
@@ -28,8 +30,7 @@ export function PairPage() {
       <Navigate to={`/projects/${pid}/pairs/${pairId}/${defaultPairStage(data.pair)}`} replace />
     );
   const descriptions: Record<string, string> = {
-    alignment:
-      "Which chapter of the English book matches which chapter of the translation. Check the rows, untick what phase 1 should skip (front matter, notes, a licence), then confirm.",
+    alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, untick what phase 1 should skip (front matter, notes, a licence), then confirm.`,
     learn:
       "Phase 1. The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
     kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when phase 1 runs again.",

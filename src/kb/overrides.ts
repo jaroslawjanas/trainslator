@@ -7,16 +7,17 @@ import { entryKeys, normalizeKey } from "./model.ts";
  * after every automatic rebuild, so re-running a phase never undoes them.
  */
 
-function findIndex(entries: KbEntry[], id: string, key: string): number {
+function findIndex(entries: KbEntry[], id: string, key: string, lang: string): number {
   const byId = entries.findIndex((e) => e.id === id);
   if (byId >= 0) return byId;
-  return key ? entries.findIndex((e) => entryKeys(e).includes(key)) : -1;
+  return key ? entries.findIndex((e) => entryKeys(e, lang).includes(key)) : -1;
 }
 
-export function applyOverrides(kb: Kb, overrides: KbOverrides): Kb {
+/** `lang`: the source language, whose name keys the overrides were stored with. */
+export function applyOverrides(kb: Kb, overrides: KbOverrides, lang: string): Kb {
   const entries = [...kb.entries];
   for (const [id, o] of Object.entries(overrides.entries)) {
-    const i = findIndex(entries, id, o.key);
+    const i = findIndex(entries, id, o.key, lang);
     if (o.entry === null) {
       if (i >= 0) entries.splice(i, 1);
       continue;
@@ -59,7 +60,7 @@ export function deletedKeys(overrides: KbOverrides): Set<string> {
   );
 }
 
-export function lockEntry(overrides: KbOverrides, entry: KbEntry): KbOverrides {
+export function lockEntry(overrides: KbOverrides, entry: KbEntry, lang: string): KbOverrides {
   const locked: KbEntry = {
     ...entry,
     status: entry.status === "open" ? "locked" : "locked",
@@ -69,7 +70,7 @@ export function lockEntry(overrides: KbOverrides, entry: KbEntry): KbOverrides {
     ...overrides,
     entries: {
       ...overrides.entries,
-      [entry.id]: { key: normalizeKey(entry.source), entry: locked, at: nowIso() },
+      [entry.id]: { key: normalizeKey(entry.source, lang), entry: locked, at: nowIso() },
     },
   };
 }
@@ -79,12 +80,12 @@ export function unlockEntry(overrides: KbOverrides, id: string): KbOverrides {
   return { ...overrides, entries: rest };
 }
 
-export function deleteEntry(overrides: KbOverrides, entry: KbEntry): KbOverrides {
+export function deleteEntry(overrides: KbOverrides, entry: KbEntry, lang: string): KbOverrides {
   return {
     ...overrides,
     entries: {
       ...overrides.entries,
-      [entry.id]: { key: normalizeKey(entry.source), entry: null, at: nowIso() },
+      [entry.id]: { key: normalizeKey(entry.source, lang), entry: null, at: nowIso() },
     },
   };
 }

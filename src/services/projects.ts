@@ -1,7 +1,9 @@
+import { SOURCE_LANGUAGES } from "../languages/index.ts";
 import {
   canonicalLanguageTag,
   directionOf,
   languageDisplayName,
+  primarySubtag,
   scriptOf,
 } from "../shared/languages.ts";
 import { newId, nowIso } from "../shared/schemas/common.ts";
@@ -60,9 +62,13 @@ export class ProjectStore {
   async create(input: { name: string; targetLang: string; sourceLang?: string }): Promise<Project> {
     const tag = canonicalLanguageTag(input.targetLang);
     if (!tag) throw new UserError(`"${input.targetLang}" isn't a valid language code.`);
-    const sourceLang = input.sourceLang ?? "en";
-    if (sourceLang !== "en")
-      throw new UserError("Only English is supported as the source language for now.");
+    const sourceLang = canonicalLanguageTag(input.sourceLang ?? "en");
+    if (!sourceLang || !SOURCE_LANGUAGES.includes(primarySubtag(sourceLang)))
+      throw new UserError(
+        `Books can be translated from ${SOURCE_LANGUAGES.map((t) => languageDisplayName(t)).join(", ")} for now.`,
+      );
+    if (primarySubtag(sourceLang) === primarySubtag(tag))
+      throw new UserError("Choose a target language different from the source language.");
     const now = nowIso();
     const project: Project = {
       schemaVersion: 1,

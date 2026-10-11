@@ -1,0 +1,33 @@
+0 "Mira co wieczór wspinała się po stu stopniach latarni, licząc je."
+  errors []
+  warnings []
+0 "Mira climbed the hundred steps of the lighthouse every evening, counting them."
+  errors []
+  warnings ["identical to the source (untranslated?)"]
+0 "Here is the translation: Mira co wieczór wspinała się po stu stopniach latarni."
+  errors ["starts with a preamble instead of the translation"]
+  warnings []
+0 "Mira **co wieczór** wspinała się po stu stopniach latarni, licząc je."
+  errors ["contains Markdown formatting"]
+  warnings []
+0 "Mira."
+  errors []
+  warnings ["much shorter than the source (6% of its length)"]
+1 "Prowadziła <g1>mały</g1> notes."
+  errors ["<x2/> must appear exactly once (found 0)"]
+  warnings []
+1 "Prowadziła <g1>mały</g1> notes.<x2/>"
+  errors []
+  warnings []
+2 "Sure, I'll come with you tomorrow morning if the weather is good."
+  errors []
+  warnings ["identical to the source (untranslated?)"]
+2 "Jasne, pójdę z tobą jutro rano, jeśli będzie ładna pogoda."
+  errors []
+  warnings []
+3 "– Proszę wejść – powiedział latarnik i drzwi otworzyły się ze skrzypnięciem."
+  errors []
+  warnings []
+3 "“– Proszę wejść – powiedział latarnik.”"
+  errors []
+  warnings []

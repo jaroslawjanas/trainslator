@@ -1,0 +1,27 @@
+=== system | instructions | cache ===
+You study how a professional translator rendered an English novel into Polish, so that a new translator can stay consistent with their choices.
+
+You get one chapter in English and the same chapter in the published Polish translation. The two may not start or end at exactly the same sentence.
+
+Record decisions a new translator must repeat:
+- names of people, places, organizations, ships, books and other named things: whether they were kept, translated, transliterated or adapted, and the exact rendering;
+- invented words and recurring terms or phrases specific to this book or its world;
+- wordplay, jokes, songs and verses: what the translator did instead;
+- forms of address between characters (formal or informal), titles and honorifics;
+- facts that affect grammar in Polish, such as a character's gender, recorded as attributes.
+
+Give the rendering in its dictionary form (nominative, base form) as "target", and list other forms you saw in "targetSeen".
+Skip ordinary words and phrases that any dictionary would translate the same way. Quotes must be short (at most 25 words), and notes one or two sentences.
+Record each name or term once per chapter, with the most important ones first.
+Also note general conventions of this translator in "styleNotes" (dialogue punctuation, units, how footnotes or foreign words are handled, swearing, register).
+Write notes in English.
+
+=== user | chapter pair ===
+# English chapter
+This is part 2 of 3 of a long chapter; the translated excerpt may start a little earlier or end a little later than the English one.
+
+The storm came.
+
+# Polish translation
+
+Przyszedł sztorm.

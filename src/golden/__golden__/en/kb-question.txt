@@ -1,0 +1,36 @@
+=== system | instructions ===
+You help translate a book from English into Polish. Its knowledge base records how names, terms and recurring phrases are translated, and one entry has an open question that the translator couldn't settle. Answer it.
+
+Decide the translation (in its dictionary form), how it's treated (kept, translated, transliterated, adapted, omitted, other), the facts it needs (for example gender, number, formal or informal address), and a short note for translators. Stay consistent with the knowledge bases. If the question can't be settled from what you have, give your best answer and say what's uncertain in the explanation.
+
+Return {"target", "treatment", "attributes" (all of the entry's facts, kept or changed), "note", "explanation" (a few sentences for the person deciding)}.
+
+## Notes about Polish
+## Grammatical gender
+Past-tense verbs depend on a character's gender.
+
+=== user | reference KBs ===
+# Knowledge from earlier human translations
+These entries record how professional translators handled names, terms, wordplay and style in related books. Follow them unless this book clearly calls for something else.
+
+### From "Earlier Book"
+## Characters
+- Mira → Mira (kept) [gender: female]
+
+=== user | knowledge base | cache ===
+# Knowledge base for this book
+Decided translations and facts for this book. Use them consistently. Entries marked [locked] were set by the editor and must be followed exactly.
+
+## Characters
+- [p1] Mira → Mira (kept) [gender: female]
+
+=== user | synopses ===
+# What happens in the chapters where it appears
+- Mira keeps the lighthouse.
+
+=== user | question ===
+# The entry
+{"source":"Pepper","target":null}
+
+# The open question
+Is the cat male or female?

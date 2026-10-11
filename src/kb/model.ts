@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
+import { keyArticleRegex } from "../languages/index.ts";
 import type { KbEntry, KbKind } from "../shared/schemas/kb.ts";
+import { inflection, mentionsAny } from "./match.ts";
 
 export type KindFamily = "names" | "expressions";
 
@@ -9,22 +11,25 @@ export function kindFamily(kind: KbKind): KindFamily {
     : "expressions";
 }
 
-/** Normalized form used to match the same name or term across chapters and runs. */
-export function normalizeKey(text: string): string {
-  return text
+/**
+ * Normalized form used to match the same name or term across chapters and
+ * runs, in the language the text is in (its articles are ignored). Keys of
+ * your own changes are stored, so a project's source language must not change.
+ */
+export function normalizeKey(text: string, lang: string): string {
+  const article = keyArticleRegex(lang);
+  const trimmed = text
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[‘’‚‛`´]/g, "'")
     .replace(/[“”„‟«»]/g, '"')
-    .replace(/^[\s"'([{.,;:!?*_-]+|[\s"')\]}.,;:!?*_-]+$/g, "")
-    .replace(/^(the|a|an)\s+/, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/^[\s"'([{.,;:!?*_-]+|[\s"')\]}.,;:!?*_-]+$/g, "");
+  return (article ? trimmed.replace(article, "") : trimmed).replace(/\s+/g, " ").trim();
 }
 
 /** All normalized keys an entry answers to (source and aliases). */
-export function entryKeys(entry: Pick<KbEntry, "source" | "aliases">): string[] {
-  return [entry.source, ...entry.aliases].map(normalizeKey).filter(Boolean);
+export function entryKeys(entry: Pick<KbEntry, "source" | "aliases">, lang: string): string[] {
+  return [entry.source, ...entry.aliases].map((t) => normalizeKey(t, lang)).filter(Boolean);
 }
 
 /** A readable, stable id from the source text: "e_old_mags". */
@@ -52,13 +57,16 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-/** Where an entry's source or aliases occur, as unit/segment ids. */
+/** Where an entry's source or aliases occur, as unit/segment ids (inflected forms count). */
 export function computeRefs(
   entry: Pick<KbEntry, "source" | "aliases">,
   texts: { id: string; text: string }[],
+  lang: string,
 ): string[] {
   const terms = [entry.source, ...entry.aliases].map((t) => t.trim()).filter((t) => t.length >= 2);
   if (terms.length === 0) return [];
+  const forms = inflection(lang);
+  if (forms) return texts.filter((t) => mentionsAny(terms, t.text, forms)).map((t) => t.id);
   const pattern = new RegExp(
     `(?<![\\p{L}\\p{N}])(${terms.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`,
     "iu",

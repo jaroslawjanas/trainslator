@@ -16,6 +16,7 @@ import { IconBooks, IconMoon, IconSettings, IconSun } from "@tabler/icons-react"
 import { useQuery } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useMatches } from "react-router";
+import { languageDisplayName } from "../../../src/shared/languages.ts";
 import { get } from "../api/client.ts";
 import { useLiveEvents } from "../api/live.ts";
 import type { Book, Pair } from "../api/types.ts";
@@ -192,7 +193,7 @@ function ProjectNav({
           {p.name}
         </Text>
         <Text size="xs" c="dimmed">
-          English into {p.targetLangName}
+          {languageDisplayName(p.sourceLang)} into {p.targetLangName}
         </Text>
       </Box>
       <Stack gap={1} mt="xs">

@@ -1,3 +1,4 @@
+import { matterMatchers } from "../languages/index.ts";
 import { countWords } from "../shared/languages.ts";
 import type { Diagnostic } from "../shared/schemas/common.ts";
 import type { Segment, SegmentGuess, UnitRange } from "../shared/schemas/epub.ts";
@@ -22,11 +23,6 @@ export interface SegmentsResult {
 }
 
 const MAX_DEPTH = 4;
-const FRONT_RE =
-  /\b(contents|table of contents|copyright|title page|half[- ]title|dedication|epigraph|cover|praise for|about the publisher|imprint|colophon|frontispiece|series page)\b/i;
-const BACK_RE =
-  /\b(about the authors?|acknowledg\w*|also by|end ?notes|notes|glossary|index|bibliography|credits|newsletter|sneak peek|excerpt|reading group|discussion questions|about the type|licen[cs]e)\b/i;
-
 /** Builds logical chapters (segments) for each TOC depth. */
 export function buildSegments(book: EpubBook, lang: string): SegmentsResult {
   const diagnostics: Diagnostic[] = [];
@@ -205,7 +201,7 @@ function segmentsFor(
   const segments = drafts
     .map((d) => finishSegment(book, d.title, d.depth, d.linear, d.ranges, lang))
     .filter((s) => s.ranges.length > 0 && (s.words > 0 || s.depth > 0));
-  return assignIdsAndGuesses(segments, depth);
+  return assignIdsAndGuesses(segments, depth, lang);
 }
 
 function perDocumentSegments(
@@ -229,6 +225,7 @@ function perDocumentSegments(
   return assignIdsAndGuesses(
     segments.filter((s) => s.words > 0),
     depth,
+    lang,
   );
 }
 
@@ -278,21 +275,21 @@ function finishSegment(
   };
 }
 
-function assignIdsAndGuesses(segments: Segment[], depth: number): Segment[] {
-  const big = segments.map(
-    (s) => s.words >= 1000 && !FRONT_RE.test(s.title) && !BACK_RE.test(s.title),
-  );
+/** Front or back matter by title words in the book's language (see languages/*.json). */
+function assignIdsAndGuesses(segments: Segment[], depth: number, lang: string): Segment[] {
+  const { front, back } = matterMatchers(lang);
+  const isFront = (title: string) => front?.test(title) ?? false;
+  const isBack = (title: string) => back?.test(title) ?? false;
+  const big = segments.map((s) => s.words >= 1000 && !isFront(s.title) && !isBack(s.title));
   const firstBig = big.indexOf(true);
   const lastBig = big.lastIndexOf(true);
   return segments.map((s, i) => {
     let guess: SegmentGuess = "body";
     if (!s.linear) guess = "back";
-    else if (firstBig >= 0 && i < firstBig && (FRONT_RE.test(s.title) || s.words < 300))
-      guess = "front";
-    else if (lastBig >= 0 && i > lastBig && (BACK_RE.test(s.title) || s.words < 300))
-      guess = "back";
-    else if (FRONT_RE.test(s.title) && i < segments.length / 2) guess = "front";
-    else if (BACK_RE.test(s.title) && i >= segments.length / 2) guess = "back";
+    else if (firstBig >= 0 && i < firstBig && (isFront(s.title) || s.words < 300)) guess = "front";
+    else if (lastBig >= 0 && i > lastBig && (isBack(s.title) || s.words < 300)) guess = "back";
+    else if (isFront(s.title) && i < segments.length / 2) guess = "front";
+    else if (isBack(s.title) && i >= segments.length / 2) guess = "back";
     return { ...s, id: `d${depth}s${i}`, index: i, guess };
   });
 }

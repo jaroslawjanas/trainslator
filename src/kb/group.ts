@@ -41,11 +41,12 @@ export function top<T extends string>(map: Record<string, number>): T | null {
   return best as T | null;
 }
 
-export function groupFindings(units: UnitFindings[]): FindingGroup[] {
+/** `lang`: the source language the names and terms are in. */
+export function groupFindings(units: UnitFindings[], lang: string): FindingGroup[] {
   const groups = new Map<string, FindingGroup>();
   for (const u of units) {
     for (const f of u.findings) {
-      const key = normalizeKey(f.source);
+      const key = normalizeKey(f.source, lang);
       if (!key) continue;
       const family = kindFamily(f.kind);
       const gk = `${family}:${key}`;
@@ -181,7 +182,8 @@ export function groupStyleNotes(units: UnitFindings[]): StyleGroup[] {
   const map = new Map<string, StyleGroup>();
   for (const u of units) {
     for (const s of u.styleNotes) {
-      const key = normalizeKey(s.rule);
+      // Style notes are written in English, whatever the book's language.
+      const key = normalizeKey(s.rule, "en");
       if (!key) continue;
       const g = map.get(key) ?? { rule: s.rule.trim(), count: 0, example: null };
       g.count++;

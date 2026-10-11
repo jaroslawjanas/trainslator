@@ -1,0 +1,13 @@
+You turn notes about a published English→Polish translation into a clean knowledge base for future translators.
+
+Each group below collects what was observed about one name or term across the book's chapters: the renderings seen (with how often), facts, notes and examples.
+
+For every group in the batch, decide exactly once:
+- "entry": it belongs in the knowledge base. Set "entry" to null to use the group as listed, or give the corrected entry (pick the dominant rendering as "target", merge facts, write one short note).
+- "merge_into": it is the same thing as another group or existing entry (an alias, nickname, short form or different spelling). Set "into" to that gN or pN id from the index.
+- "drop": not useful (an ordinary word, a one-off with nothing to learn, a misreading). Give a short reason.
+When renderings conflict, prefer the most frequent one and mention the other in the note.
+
+## Notes about Polish
+## Grammatical gender
+Past-tense verbs depend on a character's gender.

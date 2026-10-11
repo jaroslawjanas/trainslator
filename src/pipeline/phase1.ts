@@ -13,6 +13,7 @@ import {
   type UnitFindings,
 } from "../kb/group.ts";
 import { renderEntry } from "../kb/render.ts";
+import { sourceLanguage } from "../languages/index.ts";
 import { answerCap, callStructured, replyCandidates, withRoomToGrow } from "../llm/call.ts";
 import { isLlmError } from "../llm/errors.ts";
 import { estimateTokens } from "../llm/tokens.ts";
@@ -24,6 +25,7 @@ import {
   PHASE1_PROMPT_VERSION,
   ReadOutput,
   readBlocks,
+  readOutputFor,
   type StyleNote,
   StyleOutput,
   styleBlocks,
@@ -138,7 +140,9 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
   app.events.changed(pid, "pairs", pairId);
 
   // 1. Chapter texts, split when a pair wouldn't fit the read model comfortably.
+  const source = sourceLanguage(project.sourceLang);
   const system = readBlocks({
+    source,
     targetName: project.targetLangName,
     languageNotes: notes,
     sourceText: "",
@@ -229,13 +233,14 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
           step: "phase1.read",
           label,
           blocks: readBlocks({
+            source,
             targetName: project.targetLangName,
             languageNotes: notes,
             sourceText: t.sourceText,
             targetText: t.targetText,
             part: t.part,
           }),
-          schema: ReadOutput,
+          schema: readOutputFor(source),
           schemaName: "chapter_findings",
           answerBudget,
           signal,
@@ -282,7 +287,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
 
   // 3. Group findings by code.
   const unitFindings = [...results.values()].filter((r): r is UnitFindings => r !== null);
-  const groups = groupFindings(unitFindings);
+  const groups = groupFindings(unitFindings, project.sourceLang);
   const styleGroups = groupStyleNotes(unitFindings);
 
   // 4. Merge in batches; the index of all groups (and locked entries) is the cached prefix.
@@ -301,7 +306,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
       renderEntry(e, { ids: new Map([[e.id, `p${i + 1}`]]) }).replace(/^- /, ""),
     ),
   ].join("\n");
-  const mergeSys = mergeSystem(project.targetLangName, notes);
+  const mergeSys = mergeSystem(source, project.targetLangName, notes);
   // A decision with a full entry runs to about 200 tokens. Batches aim at
   // answers of about 7000 tokens, and each call gets twice that much room.
   const perDecision = 200;
@@ -455,7 +460,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
             projectId: pid,
             step: "phase1.merge",
             label: "style rules",
-            blocks: styleBlocks(project.targetLangName, notes, notesText),
+            blocks: styleBlocks(source, project.targetLangName, notes, notesText),
             schema: StyleOutput,
             schemaName: "style_rules",
             answerBudget,
@@ -484,6 +489,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
   // 6. Assemble the knowledge base and re-apply your edits.
   const resolution = resolveDecisions(groups, decisions, lockedIds);
   const kb = assembleKb({
+    lang: project.sourceLang,
     scope: "pair",
     title: pair.title,
     resolution,

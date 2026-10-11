@@ -1,7 +1,7 @@
 /**
  * Translate a whole EPUB from the command line (phase 3 only, no knowledge bases).
  *
- *   pnpm translate:dev book.epub --target pl --base-url https://api.openai.com/v1 \
+ *   pnpm translate:dev book.epub [--source en] --target pl --base-url https://api.openai.com/v1 \
  *     --model gpt-x --key-env OPENAI_API_KEY [--kind openai] [--parallel 4] \
  *     [--reasoning low] [--chunk-tokens 1500] [--context 128000] [--max-output 16000] \
  *     [--chapters 2] [--data data/dev] [--stream]
@@ -32,6 +32,7 @@ import { DataPaths } from "../src/store/paths.ts";
 const { values, positionals } = parseArgs({
   allowPositionals: true,
   options: {
+    source: { type: "string", default: "en" },
     target: { type: "string" },
     "base-url": { type: "string" },
     model: { type: "string" },
@@ -57,7 +58,7 @@ function fail(message: string): never {
 const input = positionals[0];
 if (!input || !values.target || !values["base-url"] || !values.model) {
   fail(
-    "Usage: pnpm translate:dev <book.epub> --target <lang> --base-url <url> --model <name> [--key-env VAR] [--kind openai|openrouter|…]",
+    "Usage: pnpm translate:dev <book.epub> [--source en|de|pl] --target <lang> --base-url <url> --model <name> [--key-env VAR] [--kind openai|openrouter|…]",
   );
 }
 const kind = ConnectionKind.parse(values.kind);
@@ -103,8 +104,9 @@ const projectId = "dev";
 const bookId = baseName.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 60) || "book";
 const rt = await createLlmRuntime(paths, { settings: () => settings });
 const target: CallTarget = { connection, model, step };
+const sourceLang = values.source;
 const targetLang = values.target;
-const segments = buildSegments(book, "en").segmentsByDepth["1"] ?? [];
+const segments = buildSegments(book, sourceLang).segmentsByDepth["1"] ?? [];
 const chosen = values.chapters
   ? segments.filter((s) => s.guess === "body").slice(0, Number(values.chapters))
   : segments;
@@ -122,8 +124,8 @@ const env = {
   tocTarget: target,
   book,
   languages: {
-    sourceLang: "en",
-    sourceName: "English",
+    sourceLang,
+    sourceName: languageDisplayName(sourceLang),
     targetLang,
     targetName: languageDisplayName(targetLang),
     targetScript: scriptOf(targetLang),
@@ -157,7 +159,7 @@ const { file, report } = await buildBook({
   projectId,
   bookId,
   book,
-  sourceLang: "en",
+  sourceLang,
   targetLang,
   direction: directionOf(targetLang),
   keepDocs,

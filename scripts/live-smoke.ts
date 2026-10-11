@@ -7,11 +7,11 @@
  *   book + phase 2 → phase 3 → build → reopen the output
  *
  *   pnpm test:live --base-url https://ollama.com/v1 --model deepseek-v4.1-flash:cloud \
- *     --kind ollama --key-env OLLAMA_API_KEY [--target pl] [--context 128000] \
+ *     --kind ollama --key-env OLLAMA_API_KEY [--source en] [--target pl] [--context 128000] \
  *     [--max-output 16000] [--parallel 4] [--keep]
  *
  * The same settings can come from the environment: LIVE_BASE_URL, LIVE_MODEL,
- * LIVE_KIND, LIVE_KEY_ENV, LIVE_TARGET. It sends about 15 small requests.
+ * LIVE_KIND, LIVE_KEY_ENV, LIVE_SOURCE, LIVE_TARGET. It sends about 15 small requests.
  * Exits with 1 when a step fails.
  */
 import { promises as fs } from "node:fs";
@@ -24,10 +24,15 @@ import { createApp } from "../src/server/app.ts";
 import { createContext } from "../src/server/context.ts";
 import { jobHandlers } from "../src/server/handlers.ts";
 import type { Alignment } from "../src/shared/schemas/alignment.ts";
+import type { BookSetup, EpubStructure } from "../src/shared/schemas/epub.ts";
 import type { Job } from "../src/shared/schemas/jobs.ts";
 import type { Kb } from "../src/shared/schemas/kb.ts";
 import { type Connection, ConnectionKind, type Model } from "../src/shared/schemas/settings.ts";
-import { sampleNovel, sampleNovelTranslation } from "../src/testing/epub-fixtures.ts";
+import {
+  sampleGermanNovel,
+  sampleNovel,
+  sampleNovelTranslation,
+} from "../src/testing/epub-fixtures.ts";
 
 const { values } = parseArgs({
   options: {
@@ -35,6 +40,7 @@ const { values } = parseArgs({
     model: { type: "string", default: process.env.LIVE_MODEL },
     kind: { type: "string", default: process.env.LIVE_KIND ?? "custom" },
     "key-env": { type: "string", default: process.env.LIVE_KEY_ENV },
+    source: { type: "string", default: process.env.LIVE_SOURCE ?? "en" },
     target: { type: "string", default: process.env.LIVE_TARGET ?? "pl" },
     context: { type: "string", default: "128000" },
     "max-output": { type: "string", default: "16000" },
@@ -45,8 +51,19 @@ const { values } = parseArgs({
 
 if (!values["base-url"] || !values.model) {
   console.error(
-    "Usage: pnpm test:live --base-url <url> --model <name> [--kind openai|openrouter|ollama|…] [--key-env VAR] [--target pl]",
+    "Usage: pnpm test:live --base-url <url> --model <name> [--kind openai|openrouter|ollama|…] [--key-env VAR] [--source en] [--target pl]",
   );
+  process.exit(1);
+}
+/** The sample book in each source language, and its translation when there is one. */
+const SAMPLES: Record<string, { book: () => Uint8Array; translation?: () => Uint8Array }> = {
+  en: { book: sampleNovel, translation: sampleNovelTranslation },
+  pl: { book: sampleNovelTranslation, translation: sampleNovel },
+  de: { book: sampleGermanNovel },
+};
+const sample = SAMPLES[values.source ?? "en"];
+if (!sample) {
+  console.error(`--source must be one of ${Object.keys(SAMPLES).join(", ")}.`);
   process.exit(1);
 }
 const kind = ConnectionKind.parse(values.kind);
@@ -157,6 +174,7 @@ await step("connection test", async () => {
 const project = await step("project and language notes", async () => {
   const { project } = await api<{ project: { id: string } }>("POST", "/api/projects", {
     name: "Live smoke test",
+    sourceLang: values.source,
     targetLang: values.target,
   });
   await runJob(`/api/projects/${project.id}/language-notes/generate`);
@@ -165,34 +183,50 @@ const project = await step("project and language notes", async () => {
 if (!project) process.exit(1);
 const pid = project.id;
 
-await step("reference pair and phase 1", async () => {
-  const form = new FormData();
-  form.set("source", new File([sampleNovel()], "novel.epub"));
-  form.set("target", new File([sampleNovelTranslation()], "novel-translated.epub"));
-  const { pair } = await api<{ pair: { id: string } }>("POST", `/api/projects/${pid}/pairs`, form);
-  const { alignment } = await api<{ alignment: Alignment }>(
-    "GET",
-    `/api/projects/${pid}/pairs/${pair.id}`,
-  );
-  await api("PUT", `/api/projects/${pid}/pairs/${pair.id}/alignment`, {
-    ...alignment,
-    status: "confirmed",
-    units: alignment.units.map((u) => ({
-      ...u,
-      include: u.source.length > 0 && u.target.length > 0,
-    })),
+const translation = sample.translation;
+if (!translation)
+  console.log("\nNo reference pair: there is no translated sample in this language.");
+else
+  await step("reference pair and phase 1", async () => {
+    const form = new FormData();
+    form.set("source", new File([sample.book()], "novel.epub"));
+    form.set("target", new File([translation()], "novel-translated.epub"));
+    const { pair } = await api<{ pair: { id: string } }>(
+      "POST",
+      `/api/projects/${pid}/pairs`,
+      form,
+    );
+    const { alignment } = await api<{ alignment: Alignment }>(
+      "GET",
+      `/api/projects/${pid}/pairs/${pair.id}`,
+    );
+    await api("PUT", `/api/projects/${pid}/pairs/${pair.id}/alignment`, {
+      ...alignment,
+      status: "confirmed",
+      units: alignment.units.map((u) => ({
+        ...u,
+        include: u.source.length > 0 && u.target.length > 0,
+      })),
+    });
+    await runJob(`/api/projects/${pid}/pairs/${pair.id}/phase1/run`);
+    const { kb } = await api<{ kb: Kb }>("GET", `/api/projects/${pid}/pairs/${pair.id}/kb`);
+    console.log(`\n    ${kb.entries.length} entries, ${kb.styleRules.length} style rules`);
+    return pair.id;
   });
-  await runJob(`/api/projects/${pid}/pairs/${pair.id}/phase1/run`);
-  const { kb } = await api<{ kb: Kb }>("GET", `/api/projects/${pid}/pairs/${pair.id}/kb`);
-  console.log(`\n    ${kb.entries.length} entries, ${kb.styleRules.length} style rules`);
-  return pair.id;
-});
 
 const bookId = await step("book and phase 2", async () => {
   const form = new FormData();
-  form.set("file", new File([sampleNovel()], "novel.epub"));
+  form.set("file", new File([sample.book()], "novel.epub"));
   const { book } = await api<{ book: { id: string } }>("POST", `/api/projects/${pid}/books`, form);
-  await runJob(`/api/projects/${pid}/books/${book.id}/phase2/run`);
+  // The sample chapters are shorter than phase 2 reads by default.
+  const base = `/api/projects/${pid}/books/${book.id}`;
+  const detail = await api<{ structure: EpubStructure; setup: BookSetup }>("GET", base);
+  const body = detail.structure.segmentsByDepth[String(detail.setup.tocDepth)] ?? [];
+  await api("PUT", `${base}/setup`, {
+    ...detail.setup,
+    phase2Segments: body.filter((s) => s.linear && s.guess === "body").map((s) => s.id),
+  });
+  await runJob(`${base}/phase2/run`);
   const { kb } = await api<{ kb: Kb }>("GET", `/api/projects/${pid}/books/${book.id}/kb`);
   const open = kb.entries.filter((e) => e.status === "open").length;
   console.log(`\n    ${kb.entries.length} entries (${open} open questions)`);

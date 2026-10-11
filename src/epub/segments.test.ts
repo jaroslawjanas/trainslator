@@ -129,3 +129,55 @@ describe("markdown text", () => {
     expect(md).not.toContain("hidden note");
   });
 });
+
+describe("front and back matter in other languages", () => {
+  const para = (n: number) => `<p>${Array.from({ length: n }, () => "Wort").join(" ")}.</p>`;
+  const bookWith = (language: string, titles: [string, number][]) => {
+    const docs = titles.map(([title, words], i) => ({
+      path: `text/d${i}.xhtml`,
+      title,
+      body: `<h1>${title}</h1>${para(words)}`,
+    }));
+    return EpubBook.open(
+      buildFixtureEpub({
+        language,
+        docs,
+        toc: docs.map((d) => ({ title: d.title, href: d.path })),
+      }),
+    );
+  };
+
+  it("recognises German titles", () => {
+    const book = bookWith("de", [
+      ["Inhaltsverzeichnis", 400],
+      ["Erstes Kapitel", 1500],
+      ["Anmerkungen zur Reise", 400],
+      ["Zweites Kapitel", 1500],
+      ["Über die Autorin", 400],
+    ]);
+    const guesses = buildSegments(book, "de").segmentsByDepth["1"]!.map((s) => s.guess);
+    expect(guesses).toEqual(["front", "body", "body", "body", "back"]);
+  });
+
+  it("recognises Polish titles", () => {
+    const book = bookWith("pl", [
+      ["Spis treści", 400],
+      ["Rozdział pierwszy", 1500],
+      ["Rozdział drugi", 1500],
+      ["Podziękowania", 400],
+      ["Od tłumacza", 400],
+    ]);
+    const guesses = buildSegments(book, "pl").segmentsByDepth["1"]!.map((s) => s.guess);
+    expect(guesses).toEqual(["front", "body", "body", "back", "back"]);
+  });
+
+  it("guesses by position and size only for languages without a file", () => {
+    const book = bookWith("fr", [
+      ["Table des matières", 400],
+      ["Chapitre un", 1500],
+      ["Remerciements", 400],
+    ]);
+    const guesses = buildSegments(book, "fr").segmentsByDepth["1"]!.map((s) => s.guess);
+    expect(guesses).toEqual(["body", "body", "body"]);
+  });
+});

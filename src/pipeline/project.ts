@@ -1,4 +1,5 @@
 import type { JobContext } from "../jobs/runner.ts";
+import { sourceLanguage } from "../languages/index.ts";
 import { callStructured } from "../llm/call.ts";
 import { LanguageNotesOutput, languageNotesBlocks } from "../prompts/language-notes.ts";
 import type { AppContext } from "../server/context.ts";
@@ -16,7 +17,11 @@ export async function languageNotesJob(app: AppContext, job: JobContext): Promis
     projectId,
     step: "utility",
     label: "language notes",
-    blocks: languageNotesBlocks("English", project.targetLangName, project.targetLang),
+    blocks: languageNotesBlocks(
+      sourceLanguage(project.sourceLang),
+      project.targetLangName,
+      project.targetLang,
+    ),
     schema: LanguageNotesOutput,
     schemaName: "language_notes",
     answerBudget: 1500,

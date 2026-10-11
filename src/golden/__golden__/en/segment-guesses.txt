@@ -1,0 +1,41 @@
+sample novel d1 body 119 Chapter One
+sample novel d1 body 47 Chapter Two
+sample novel d1 back 6 Notes
+sample novel d2 body 119 Chapter One
+sample novel d2 body 41 Chapter Two
+sample novel d2 body 6 Second Scene
+sample novel d2 back 6 Notes
+synthetic d1 front 21 Cover
+synthetic d1 front 12 Half-Title
+synthetic d1 front 22 Title Page
+synthetic d1 front 81 Copyright
+synthetic d1 front 16 Dedication
+synthetic d1 front 31 Epigraph
+synthetic d1 front 204 Praise for the Author
+synthetic d1 front 63 Table of Contents
+synthetic d1 body 1502 Chapter 1
+synthetic d1 body 125 The Notes of Mr. Hale
+synthetic d1 body 1502 Chapter 2
+synthetic d1 back 151 Acknowledgements
+synthetic d1 back 151 Acknowledgments
+synthetic d1 back 123 About the Authors
+synthetic d1 back 44 Also by Jane Doe
+synthetic d1 back 301 Endnotes
+synthetic d1 back 302 End Notes
+synthetic d1 back 201 Glossary
+synthetic d1 back 401 Index
+synthetic d1 back 301 Bibliography
+synthetic d1 back 51 Credits
+synthetic d1 back 31 Newsletter
+synthetic d1 back 902 Sneak Peek
+synthetic d1 back 901 Excerpt
+synthetic d1 back 403 Reading Group Guide
+synthetic d1 back 302 Discussion Questions
+synthetic d1 back 63 About the Type
+synthetic d1 back 63 About the Publisher
+synthetic d1 back 31 Imprint
+synthetic d1 back 31 Colophon
+synthetic d1 back 6 Frontispiece
+synthetic d1 back 22 Series Page
+synthetic d1 back 501 Licence
+synthetic d1 back 501 License

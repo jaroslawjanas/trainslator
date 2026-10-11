@@ -19,6 +19,8 @@ export interface ApplyContext {
   refId: string | null;
   /** Text of the chapter, to compute refs of new or changed entries. */
   refText: string | null;
+  /** The source language the names and terms are in. */
+  lang: string;
 }
 
 /** Problems the model can fix in a repair turn (structural mistakes, duplicates, unknown ids). */
@@ -52,12 +54,12 @@ export function applyEdits(
   const addedThisBatch = new Set<string>();
   const keyOwner = () => {
     const m = new Map<string, KbEntry>();
-    for (const e of entries) for (const k of entryKeys(e)) if (!m.has(k)) m.set(k, e);
+    for (const e of entries) for (const k of entryKeys(e, ctx.lang)) if (!m.has(k)) m.set(k, e);
     return m;
   };
   const refsFor = (e: Pick<KbEntry, "source" | "aliases">, old: string[]): string[] => {
     if (!ctx.refId || !ctx.refText) return old;
-    const found = computeRefs(e, [{ id: ctx.refId, text: ctx.refText }]);
+    const found = computeRefs(e, [{ id: ctx.refId, text: ctx.refText }], ctx.lang);
     return found.length > 0 && !old.includes(ctx.refId) ? [...old, ctx.refId] : old;
   };
   const promptIdOf = new Map([...ctx.ids].map(([p, id]) => [id, p]));
@@ -72,7 +74,7 @@ export function applyEdits(
         reject("an added entry needs at least kind and source");
         continue;
       }
-      const key = normalizeKey(f.source);
+      const key = normalizeKey(f.source, ctx.lang);
       if (ctx.deleted.has(key)) {
         reject("the editor deleted this entry; don't add it again");
         continue;
@@ -95,7 +97,12 @@ export function applyEdits(
         const aliases = [...owner.aliases];
         for (const a of f.aliases ?? []) {
           const t = a.trim();
-          if (t && !entryKeys({ source: owner.source, aliases }).includes(normalizeKey(t)))
+          if (
+            t &&
+            !entryKeys({ source: owner.source, aliases }, ctx.lang).includes(
+              normalizeKey(t, ctx.lang),
+            )
+          )
             aliases.push(t);
         }
         const attributes = [...owner.attributes];
@@ -134,7 +141,9 @@ export function applyEdits(
       }
       const base = {
         source: f.source.trim(),
-        aliases: (f.aliases ?? []).map((a) => a.trim()).filter((a) => a && normalizeKey(a) !== key),
+        aliases: (f.aliases ?? [])
+          .map((a) => a.trim())
+          .filter((a) => a && normalizeKey(a, ctx.lang) !== key),
       };
       const entry: KbEntry = {
         id: uniqueId(slugId("b", base.source), taken),
@@ -206,7 +215,12 @@ export function applyEdits(
     const aliases = [...current.aliases];
     for (const a of f.aliases ?? []) {
       const t = a.trim();
-      if (t && !entryKeys({ source: current.source, aliases }).includes(normalizeKey(t)))
+      if (
+        t &&
+        !entryKeys({ source: current.source, aliases }, ctx.lang).includes(
+          normalizeKey(t, ctx.lang),
+        )
+      )
         aliases.push(t);
     }
     let status = current.status;

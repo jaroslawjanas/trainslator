@@ -1,0 +1,345 @@
+=== system | instructions ===
+You study how a professional translator rendered a German novel into English, so that a new translator can stay consistent with their choices.
+
+You get one chapter in German and the same chapter in the published English translation. The two may not start or end at exactly the same sentence.
+
+Record decisions a new translator must repeat:
+- names of people, places, organizations, ships, books and other named things: whether they were kept, translated, transliterated or adapted, and the exact rendering;
+- invented words and recurring terms or phrases specific to this book or its world;
+- wordplay, jokes, songs and verses: what the translator did instead;
+- forms of address between characters (formal or informal), titles and honorifics;
+- facts that affect grammar in English, such as a character's gender, recorded as attributes.
+
+Give the rendering in its dictionary form (nominative, base form) as "target", and list other forms you saw in "targetSeen".
+Give names and terms in "source" in their German base form, as a dictionary would list them (nominative singular, without an article), not in the form the text happens to use.
+Skip ordinary words and phrases that any dictionary would translate the same way. Quotes must be short (at most 25 words), and notes one or two sentences.
+Record each name or term once per chapter, with the most important ones first.
+Also note general conventions of this translator in "styleNotes" (dialogue punctuation, units, how footnotes or foreign words are handled, swearing, register).
+Write notes in English.
+
+=== user | chapter pair ===
+# German chapter
+This is part 1 of 2 of a long chapter; the translated excerpt may start a little earlier or end a little later than the German one.
+
+…
+
+# English translation
+
+…
+
+
+You turn notes about a published German→English translation into a clean knowledge base for future translators.
+
+Each group below collects what was observed about one name or term across the book's chapters: the renderings seen (with how often), facts, notes and examples.
+
+For every group in the batch, decide exactly once:
+- "entry": it belongs in the knowledge base. Set "entry" to null to use the group as listed, or give the corrected entry (pick the dominant rendering as "target", merge facts, write one short note).
+- "merge_into": it is the same thing as another group or existing entry (an alias, nickname, short form or different spelling). Set "into" to that gN or pN id from the index.
+- "drop": not useful (an ordinary word, a one-off with nothing to learn, a misreading). Give a short reason.
+When renderings conflict, prefer the most frequent one and mention the other in the note.
+
+=== system | instructions ===
+You summarize the conventions a professional translator followed when translating a German novel into English. Merge the notes below into at most 30 clear, general rules a new translator should follow, most important first. Drop notes that are one-offs or contradict the majority. Add one short example to a rule when it helps.
+
+=== user | style notes ===
+# Notes from the chapters (with how often each was seen)
+- notes
+
+
+=== system | instructions ===
+You prepare a knowledge base for translating a German novel into English. You read the whole book chapter by chapter before any translating starts, so the translator knows names, terms and facts in advance.
+
+For each chapter:
+1. Write a synopsis in English (at most 120 words): who appears, what happens, and anything that matters for translation later (genders, relationships, who speaks formally to whom, double meanings).
+2. Return edits to the knowledge base:
+   - Check the open questions first. If this chapter answers one, "resolve" it (give the decided translation and facts).
+   - "add" what a translator could otherwise get wrong or render inconsistently from chapter to chapter: names (people, places, organizations, ships, books, other named things), characters known by a description who appear more than once (with facts such as gender), titles and forms of address, invented or archaic terms, recurring phrases and wordplay. Propose a translation into English in its dictionary form, consistent with the knowledge from earlier human translations: if they kept a name, keep it; if they translated a term, use their translation. Give names and terms in "source" in their German base form, as a dictionary would list them (nominative singular, without an article), not in the form the text happens to use.
+   - Don't add one-off mentions, ordinary objects, animals or professions, or anything a dictionary translates the same way in any context. A focused list of what matters is more useful than a long one.
+   - When something can't be decided yet (for example a character's gender hasn't been revealed and English needs it), add the entry with status "open" and a short question instead of guessing.
+   - "update" entries that this chapter adds facts to or contradicts. Give only the fields that change; null keeps a field.
+   - "remove" entries that turned out to be wrong, with a reason.
+   Refer to existing entries by their id (p1, p2 …). Don't add what already exists, and don't add ordinary words. Entries marked [locked] were decided by the editor; don't change them.
+   Every edit needs a reason of a few words. In "fields", keys you don't set may be left out.
+
+=== user | book KB ===
+# Knowledge base for this book
+Decided translations and facts for this book. Use them consistently. Entries marked [locked] were set by the editor and must be followed exactly.
+
+(empty so far)
+
+=== user | chapter ===
+# Chapter: 1
+
+…
+
+
+=== system | instructions ===
+You review a knowledge base prepared for translating a German novel into English, now that the whole book has been read. Fix it with edits:
+- merge duplicates (remove one, add its spellings as aliases of the other);
+- make translations of related names and terms consistent;
+- resolve open questions that the synopses answer; leave the rest open;
+- remove entries that are ordinary words and not worth keeping.
+Refer to entries by id (p1 …). Don't change entries marked [locked]. Return no edits if nothing needs fixing. Every edit needs a short reason.
+
+=== user | synopses ===
+# The whole story, chapter by chapter
+
+
+=== user | book KB ===
+# Knowledge base for this book
+Decided translations and facts for this book. Use them consistently. Entries marked [locked] were set by the editor and must be followed exactly.
+
+
+
+=== user | focus ===
+# Review now
+…
+
+
+=== system | instructions ===
+You match the chapters of a German book with the chapters of its published English translation, so the two can be studied side by side.
+
+You get both books' segments in book order. Each has an id, a title, a word count and the opening words of its text.
+
+Return the matching as a list of units in book order:
+- usually one German segment with one translated segment;
+- a chapter split differently in the two books takes several consecutive ids on one side;
+- a segment that only one book has (a cover, a title page, a licence, notes, a publisher's page, a story missing from the other book) gets a unit of its own with an empty list on the other side.
+Every id appears exactly once, and the ids on each side stay in book order.
+Set "include" to true for chapter or story text that both books contain, and false for everything else (front and back matter, tables of contents, unmatched segments).
+Use titles, opening words, names and lengths. A translation is usually somewhat shorter or longer than the German, but the ratio stays similar from chapter to chapter.
+
+=== user | segments ===
+## German book
+[
+{"id":"S1","title":"1","words":1000,"opening":"…"}
+]
+
+## English translation
+[
+{"id":"T1","title":"1","words":1000,"opening":"…"}
+]
+
+
+=== system | instructions ===
+You are an expert literary translator and linguist. You write short, practical guidance for translators of fiction from German into English (en).
+
+=== user | task ===
+Write concise notes (Markdown, at most about 400 words) listing what a translator of novels from German into English must track and decide consistently. Cover only what applies to English, for example:
+- grammatical gender, number and case, and which facts about characters they depend on (e.g. a character's gender affecting verb forms);
+- formal and informal address and how relationships between characters affect it;
+- honorifics, titles and kinship terms;
+- how foreign names are written, adapted, transliterated or inflected;
+- name order and writing system;
+- quotation and dialogue punctuation, spacing rules, number and date formats;
+- anything else a translator commonly gets wrong for this language.
+- what German expresses differently and how to carry it into English: forms of address (for example formal and informal "you"), inflected and diminutive forms of names, long compound words, and what German leaves unsaid that English must decide;
+End with a section "Attributes to record" listing the attribute keys (in English, lowercase, e.g. gender, address, honorific) that a knowledge base should store for names and terms in English.
+Return JSON: {"markdown": "..."}.
+
+
+You are an experienced literary translator. Translate German text into English (en).
+
+The input is a JSON array of units from a book, in reading order. Each unit is a paragraph, heading, caption, list item or similar, given as {"id", "text"}.
+
+Rules:
+1. Return exactly one output unit for every input unit, with the same id, in the same order. Never merge, split, skip or add units.
+2. Placeholders in the text mark formatting:
+   - <gN>…</gN> wraps formatted text (italics, links, small caps …). Keep the pair around the words that correspond in your translation. You may move it to follow natural word order.
+   - <xN/> stands for something kept as-is (a line break, an image, a note reference). Keep it in the matching position.
+   - Placeholders listed in a unit's "keep" must appear exactly once. Other placeholders may be dropped only when English has no equivalent (for example an ordinal suffix), never just for convenience.
+   - Never invent placeholders, never change their numbers, and keep them properly nested.
+3. Output plain text only: no Markdown, no HTML tags, no quotation marks around a whole unit, no comments or explanations.
+4. Translate everything, including headings, titles and captions. Keep numbers, URLs, and passages meant to stay in another language as they are.
+5. Follow the knowledge bases: use the listed names, terms and style rules consistently.
+6. Preserve the author's tone, register, rhythm and paragraphing. Don't summarize, soften or add anything.
+7. If you invent a translation for a name or recurring term that isn't in the knowledge bases, list it in "coined" (kind, source, your translation, a short note). Give "source" in its German base form (nominative singular, without an article). Otherwise return an empty "coined" array.
+
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "place",
+              "organization",
+              "named_thing",
+              "term",
+              "phrase",
+              "wordplay",
+              "other"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "the name or term as written in German, in its base form (nominative singular, without an article)"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the translator's rendering in its dictionary form (nominative, base form)"
+          },
+          "targetSeen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "other forms of the rendering seen in this chapter (inflections, variants)"
+          },
+          "treatment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "kept",
+                  "translated",
+                  "transliterated",
+                  "adapted",
+                  "omitted",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "description": "facts that matter for the translation, e.g. gender, address"
+          },
+          "note": {
+            "type": "string",
+            "description": "why it matters / what the translator did, in English"
+          },
+          "sourceQuote": {
+            "type": "string",
+            "description": "a short German quote, at most 25 words"
+          },
+          "targetQuote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the matching translated quote, at most 25 words"
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "target",
+          "targetSeen",
+          "treatment",
+          "attributes",
+          "note",
+          "sourceQuote",
+          "targetQuote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "styleNotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "a general convention of this translator, in English"
+          },
+          "sourceQuote": {
+            "type": "string"
+          },
+          "targetQuote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "sourceQuote",
+          "targetQuote"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "findings",
+    "styleNotes"
+  ],
+  "additionalProperties": false
+}
+
+{
+  "type": "object",
+  "properties": {
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ids of German segments (S…), or an empty list"
+          },
+          "target": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ids of translated segments (T…), or an empty list"
+          },
+          "include": {
+            "type": "boolean",
+            "description": "true for chapter or story text that both books contain, otherwise false"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "include"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "units"
+  ],
+  "additionalProperties": false
+}

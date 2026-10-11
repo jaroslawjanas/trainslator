@@ -220,6 +220,34 @@ describe("server", () => {
     expect(fake.requests.at(-1)!.model).toBe("strong-model");
   });
 
+  it("translates from English, German or Polish", async () => {
+    srv = await makeTestServer();
+    const create = (body: Record<string, unknown>) =>
+      srv!.call("POST", "/api/projects", { name: "P", ...body });
+
+    const english = await srv.json<{ project: { sourceLang: string } }>("POST", "/api/projects", {
+      name: "P",
+      targetLang: "pl",
+    });
+    expect(english.project.sourceLang).toBe("en");
+    for (const sourceLang of ["de", "pl"]) {
+      const res = await create({ sourceLang, targetLang: "en" });
+      expect(res.status).toBe(201);
+      expect(((await res.json()) as { project: { sourceLang: string } }).project.sourceLang).toBe(
+        sourceLang,
+      );
+    }
+    expect((await create({ sourceLang: "fr", targetLang: "pl" })).status).toBe(400);
+    expect((await create({ sourceLang: "de", targetLang: "de-AT" })).status).toBe(400);
+
+    const languages = await srv.json<{
+      languages: { tag: string }[];
+      sources: { tag: string; name: string }[];
+    }>("GET", "/api/projects/languages");
+    expect(languages.sources.map((s) => s.name)).toEqual(["English", "German", "Polish"]);
+    expect(languages.languages.some((l) => l.tag === "en")).toBe(true);
+  });
+
   it("explains what to set up when no model is chosen", async () => {
     srv = await makeTestServer();
     const { project } = await srv.json<{ project: { id: string } }>("POST", "/api/projects", {

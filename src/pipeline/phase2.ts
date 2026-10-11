@@ -6,6 +6,7 @@ import { type ApplyContext, applyEdits, editProblems } from "../kb/edits.ts";
 import { kindFamily } from "../kb/model.ts";
 import { applyOverrides, deletedKeys } from "../kb/overrides.ts";
 import { promptIds, renderKb } from "../kb/render.ts";
+import { sourceLanguage } from "../languages/index.ts";
 import { type CallTarget, callStructured, replyCandidates, withRoomToGrow } from "../llm/call.ts";
 import { isLlmError } from "../llm/errors.ts";
 import { estimateTokens } from "../llm/tokens.ts";
@@ -263,7 +264,11 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
       await writeJson(
         app.paths.bookKb(pid, bookId),
         Kb,
-        applyOverrides(emptyKb("book", book.title), await readOverrides(app, pid, bookId)),
+        applyOverrides(
+          emptyKb("book", book.title),
+          await readOverrides(app, pid, bookId),
+          project.sourceLang,
+        ),
       );
       app.events.changed(pid, "kb", bookId);
     } else if (fromStep !== null) {
@@ -308,13 +313,14 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
     );
     // Your answers and edits (made while the job runs) apply before every chapter.
     const overrides = await loadOverrides();
-    working = applyOverrides(working, overrides);
+    working = applyOverrides(working, overrides, project.sourceLang);
     const ids = promptIds(working);
     const ctx: ApplyContext = {
       ids: byPromptId(ids),
       deleted: deletedKeys(overrides),
       refId: step.segmentId,
       refText: step.text,
+      lang: project.sourceLang,
     };
     const usageBefore = { ...job.job.usage };
     let output: ChapterOutput = { synopsis: "", edits: [] };
@@ -325,6 +331,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
           step: "phase2.chapter",
           label: `chapter ${s + 1}/${steps.length}: ${step.title}`.slice(0, 120),
           blocks: chapterBlocks({
+            source: sourceLanguage(project.sourceLang),
             targetName: project.targetLangName,
             languageNotes: notes,
             referenceKb,
@@ -408,7 +415,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
     await writeJson(
       app.paths.bookKb(pid, bookId),
       Kb,
-      applyOverrides(working, await loadOverrides()),
+      applyOverrides(working, await loadOverrides(), project.sourceLang),
     );
     book = await app.projects.saveBook(pid, {
       ...book,
@@ -424,7 +431,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
   job.progress(steps.length, total, "Final review");
   job.stage("review", { state: "running" });
   const overrides = await loadOverrides();
-  working = applyOverrides(working, overrides);
+  working = applyOverrides(working, overrides, project.sourceLang);
   const reviewHash = sha([
     PHASE2_PROMPT_VERSION,
     working,
@@ -448,6 +455,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
         deleted: deletedKeys(overrides),
         refId: null,
         refText: null,
+        lang: project.sourceLang,
       };
       const focus =
         family === "names"
@@ -461,6 +469,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
             step: "phase2.review",
             label: `final review (${family})`,
             blocks: reviewBlocks({
+              source: sourceLanguage(project.sourceLang),
               targetName: project.targetLangName,
               languageNotes: notes,
               referenceKb,
@@ -503,7 +512,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
       finishedAt: nowIso(),
     });
   }
-  const finalKb = applyOverrides(working, await loadOverrides());
+  const finalKb = applyOverrides(working, await loadOverrides(), project.sourceLang);
   await writeJson(app.paths.bookKb(pid, bookId), Kb, finalKb);
   job.stage("review", { state: "done", done: 1 });
   job.progress(

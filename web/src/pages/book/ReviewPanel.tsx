@@ -33,6 +33,7 @@ import { del, get, put } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
 import { type Highlight, UnitText } from "../../components/PlaceholderText.tsx";
 import { displayTitle, formatDate, plural } from "../../lib/format.ts";
+import { useSourceName } from "../ProjectPage.tsx";
 import { MIN_QUERY, ReviewSearch, type SearchResult, type SearchScope } from "./ReviewSearch.tsx";
 import { RewriteModal } from "./RewriteModal.tsx";
 import type { HistoryView, ReviewUnit } from "./types.ts";
@@ -323,6 +324,7 @@ function Cell({
  * rewritten by a model, or take a passage from another version.
  */
 export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const [params, setParams] = useSearchParams();
   const [showTags, setShowTags] = useState(false);
@@ -401,13 +403,13 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
   const saved = [...(history.data?.translations ?? [])].reverse();
   const savedAs = history.data?.current?.savedAs ?? null;
   const labelOf = (id: string): string => {
-    if (id === SOURCE) return "English";
+    if (id === SOURCE) return source;
     if (id === CURRENT) return "Current translation";
     const t = saved.find((x) => x.id === id);
     return t ? `Translation ${t.number}` : "Saved translation";
   };
   const options = [
-    { value: SOURCE, label: "English" },
+    { value: SOURCE, label: source },
     { value: CURRENT, label: "Current translation" },
     ...saved.map((t) => ({
       value: t.id,

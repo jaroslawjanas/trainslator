@@ -1,0 +1,3 @@
+d1s0 | d1s0 | false | 0.85
+d1s1 | d1s1 | false | 0.73
+d1s2 | - | false | 0.5

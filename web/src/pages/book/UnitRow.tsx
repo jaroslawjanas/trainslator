@@ -38,7 +38,7 @@ const PLACEHOLDER_NAMES: Record<string, string> = {
   img: "image",
 };
 
-/** One row of the open book: English on the verso, the translation on the recto. */
+/** One row of the open book: the original on the verso, the translation on the recto. */
 export function UnitRow({
   pid,
   bookId,

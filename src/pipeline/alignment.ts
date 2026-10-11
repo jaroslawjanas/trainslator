@@ -1,3 +1,4 @@
+import { type LanguageData, languageData } from "../languages/index.ts";
 import type { Alignment, AlignUnit } from "../shared/schemas/alignment.ts";
 import type { Segment } from "../shared/schemas/epub.ts";
 
@@ -22,8 +23,12 @@ function romanToInt(s: string): number {
   return total;
 }
 
-/** Numbers in a title: Arabic digits and Roman numerals (language-agnostic). */
-export function titleNumbers(title: string): number[] {
+/**
+ * Numbers in a title: Arabic digits and Roman numerals, or, when there are
+ * none and the title's language is known, number words ("Chapter One",
+ * "Rozdział pierwszy", "Erstes Kapitel").
+ */
+export function titleNumbers(title: string, lang?: string): number[] {
   const out: number[] = [];
   for (const m of title.matchAll(/\d+/g)) out.push(Number(m[0]));
   for (const word of title.split(/[^A-Za-z]+/)) {
@@ -38,6 +43,57 @@ export function titleNumbers(title: string): number[] {
       if (n > 0) out.push(n);
     }
   }
+  if (out.length > 0 || !lang) return out;
+  const data = languageData(lang);
+  return data ? numberWordsIn(title, data) : out;
+}
+
+/** A number word, or an ordinal (its stem plus up to three letters of ending). */
+function numberWord(word: string, data: LanguageData): number | null {
+  const cardinal = data.numberWords?.[word];
+  if (cardinal !== undefined) return cardinal;
+  let best: number | null = null;
+  let bestLength = 0;
+  for (const [stem, n] of Object.entries(data.ordinals ?? {})) {
+    if (word.startsWith(stem) && word.length - stem.length <= 3 && stem.length > bestLength) {
+      best = n;
+      bestLength = stem.length;
+    }
+  }
+  return best;
+}
+
+/**
+ * Number words that stand next to a chapter word ("Part Two", "Erstes
+ * Kapitel") or make up the whole title ("Twenty-One"). Compounds add up:
+ * "twenty one" and "dwudziesty pierwszy" are 21.
+ */
+function numberWordsIn(title: string, data: LanguageData): number[] {
+  const words = title.toLowerCase().match(/\p{L}+/gu) ?? [];
+  const values = words.map((w) => numberWord(w, data));
+  const chapter = new Set(data.chapterWords ?? []);
+  const out: number[] = [];
+  for (let i = 0; i < words.length; ) {
+    if (values[i] === null) {
+      i++;
+      continue;
+    }
+    let j = i;
+    const run: number[] = [];
+    while (j < words.length && values[j] !== null) run.push(values[j++]!);
+    const whole = i === 0 && j === words.length;
+    if (whole || chapter.has(words[i - 1] ?? "") || chapter.has(words[j] ?? "")) {
+      const numbers: number[] = [];
+      for (const n of run) {
+        const tens = numbers[numbers.length - 1];
+        if (tens !== undefined && tens >= 20 && tens % 10 === 0 && n < 10)
+          numbers[numbers.length - 1] = tens + n;
+        else numbers.push(n);
+      }
+      out.push(...numbers);
+    }
+    i = j;
+  }
   return out;
 }
 
@@ -45,11 +101,11 @@ function properNames(title: string): Set<string> {
   return new Set((title.match(/\p{Lu}\p{L}{2,}/gu) ?? []).map((w) => w.toLowerCase()));
 }
 
-function titleBonus(a: Segment[], b: Segment[]): number {
+function titleBonus(a: Segment[], b: Segment[], languages?: TitleLanguages): number {
   const ta = a.map((s) => s.title).join(" ");
   const tb = b.map((s) => s.title).join(" ");
-  const na = titleNumbers(ta);
-  const nb = titleNumbers(tb);
+  const na = titleNumbers(ta, languages?.source);
+  const nb = titleNumbers(tb, languages?.target);
   if (na.length > 0 && nb.length > 0 && na.some((n) => nb.includes(n))) return 1.2;
   const pa = properNames(ta);
   const pb = properNames(tb);
@@ -83,9 +139,16 @@ function guessPenalty(a: Segment[], b: Segment[]): number {
   return (kind(a) === kind(b) ? 0 : 1.5) + (mixed(a) || mixed(b) ? 1.5 : 0);
 }
 
+/** Languages of the two books, for reading number words in titles. */
+export interface TitleLanguages {
+  source: string;
+  target: string;
+}
+
 export interface ProposalOptions {
   /** Units are included by default only when both sides look like body text. */
   minWords?: number;
+  languages?: TitleLanguages;
 }
 
 /**
@@ -112,7 +175,12 @@ interface DpResult {
   cost: number;
 }
 
-function align(source: Segment[], target: Segment[], ratio: number): DpResult {
+function align(
+  source: Segment[],
+  target: Segment[],
+  ratio: number,
+  languages?: TitleLanguages,
+): DpResult {
   const n = source.length;
   const m = target.length;
   const INF = Number.POSITIVE_INFINITY;
@@ -143,7 +211,10 @@ function align(source: Segment[], target: Segment[], ratio: number): DpResult {
         else if (dj === 0) c = skipCost(words(a));
         else
           c =
-            lengthCost(words(a), words(b), ratio) + penalty + guessPenalty(a, b) - titleBonus(a, b);
+            lengthCost(words(a), words(b), ratio) +
+            penalty +
+            guessPenalty(a, b) -
+            titleBonus(a, b, languages);
         if (here + c < cost[ni]![nj]!) {
           cost[ni]![nj] = here + c;
           back[ni]![nj] = [di, dj];
@@ -180,14 +251,18 @@ function matchedRatio(steps: [Segment[], Segment[]][]): number | null {
  * Aligns with the overall ratio, then refines the ratio from the substantial
  * chapters that matched and aligns again until it settles.
  */
-function bestAlignment(source: Segment[], target: Segment[]): DpResult & { ratio: number } {
+function bestAlignment(
+  source: Segment[],
+  target: Segment[],
+  languages?: TitleLanguages,
+): DpResult & { ratio: number } {
   let ratio = lengthRatio(source, target);
-  let result = align(source, target, ratio);
+  let result = align(source, target, ratio, languages);
   for (let k = 0; k < 5; k++) {
     const next = matchedRatio(result.steps);
     if (next === null || Math.abs(Math.log(next / ratio)) < 0.01) break;
     ratio = next;
-    result = align(source, target, ratio);
+    result = align(source, target, ratio, languages);
   }
   return { ...result, ratio };
 }
@@ -198,8 +273,10 @@ export function proposeAlignment(
   depths: { source: number; target: number },
   options: ProposalOptions = {},
 ): Alignment {
-  const { steps, ratio } = bestAlignment(source, target);
-  const units = steps.map(([a, b]) => makeUnit(a, b, ratio, options.minWords ?? 150));
+  const { steps, ratio } = bestAlignment(source, target, options.languages);
+  const units = steps.map(([a, b]) =>
+    makeUnit(a, b, ratio, options.minWords ?? 150, options.languages),
+  );
   return {
     schemaVersion: 1,
     status: "proposed",
@@ -226,13 +303,19 @@ export function alignmentRatio(alignment: Alignment, source: Segment[], target: 
   return matchedRatio(steps) ?? lengthRatio(source, target);
 }
 
-function makeUnit(a: Segment[], b: Segment[], ratio: number, minWords: number): AlignUnit {
+function makeUnit(
+  a: Segment[],
+  b: Segment[],
+  ratio: number,
+  minWords: number,
+  languages?: TitleLanguages,
+): AlignUnit {
   const wa = words(a);
   const wb = words(b);
   let confidence: number;
   if (a.length === 0 || b.length === 0) confidence = 0.5;
   else {
-    const lc = lengthCost(wa, wb, ratio) - titleBonus(a, b) * 0.5;
+    const lc = lengthCost(wa, wb, ratio) - titleBonus(a, b, languages) * 0.5;
     confidence = Math.max(0, Math.min(1, 1 - lc / 2));
   }
   const looksLikeBody = (list: Segment[], w: number) =>
@@ -282,7 +365,7 @@ export function checkAlignment(
   return problems;
 }
 
-/** Prompt ids for the AI proposal: S1… for English segments, T1… for translated ones. */
+/** Prompt ids for the AI proposal: S1… for the original segments, T1… for translated ones. */
 function promptIdIndex(prefix: string, count: number): Map<string, number> {
   return new Map(Array.from({ length: count }, (_, i) => [`${prefix}${i + 1}`, i]));
 }

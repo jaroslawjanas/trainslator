@@ -44,9 +44,9 @@ export async function importBook(
   pid: string,
   file: { name: string; bytes: Uint8Array },
 ): Promise<Book> {
-  await app.projects.get(pid);
+  const project = await app.projects.get(pid);
   const epub = EpubBook.open(file.bytes);
-  const structure = computeStructure(epub, "en");
+  const structure = computeStructure(epub, project.sourceLang);
   if (structure.totalWords === 0) throw new UserError("The book seems to have no text.");
   const pairs = await app.projects.pairs(pid);
   const book: Book = {
@@ -152,11 +152,13 @@ export function smallestContext(app: AppContext): number {
 
 export async function referenceSelection(app: AppContext, pid: string, book: Book) {
   const refs = await referenceKbs(app, pid, book);
+  const project = await app.projects.get(pid);
   return selectReferenceKbs(
     refs,
     await bookPlainText(app, pid, book.id),
     book.refKbMode,
     smallestContext(app),
+    project.sourceLang,
   );
 }
 

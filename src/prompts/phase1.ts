@@ -1,7 +1,8 @@
 import { z } from "zod";
+import type { SourceLanguage } from "../languages/index.ts";
 import type { PromptBlock } from "../llm/request.ts";
 import { KbKind, KbTreatment, KeyValue } from "../shared/schemas/kb.ts";
-import { languageNotesBlock } from "./common.ts";
+import { baseFormRule, isEnglish, languageNotesBlock } from "./common.ts";
 
 export const PHASE1_PROMPT_VERSION = 2;
 
@@ -42,10 +43,39 @@ export const ReadOutput = z.object({
 });
 export type ReadOutput = z.infer<typeof ReadOutput>;
 
-export function readSystem(targetName: string, languageNotes: string): string {
-  return `You study how a professional translator rendered an English novel into ${targetName}, so that a new translator can stay consistent with their choices.
+const readOutputs = new Map<string, typeof ReadOutput>();
 
-You get one chapter in English and the same chapter in the published ${targetName} translation. The two may not start or end at exactly the same sentence.
+/** The read schema for a source language: English uses ReadOutput itself (same bytes, same cache). */
+export function readOutputFor(source: SourceLanguage): typeof ReadOutput {
+  if (isEnglish(source)) return ReadOutput;
+  let schema = readOutputs.get(source.name);
+  if (!schema) {
+    schema = z.object({
+      findings: z.array(
+        Finding.extend({
+          source: z
+            .string()
+            .describe(
+              `the name or term as written in ${source.name}, in its base form (nominative singular, without an article)`,
+            ),
+          sourceQuote: z.string().describe(`a short ${source.name} quote, at most 25 words`),
+        }),
+      ),
+      styleNotes: z.array(StyleNote),
+    });
+    readOutputs.set(source.name, schema);
+  }
+  return schema;
+}
+
+export function readSystem(
+  source: SourceLanguage,
+  targetName: string,
+  languageNotes: string,
+): string {
+  return `You study how a professional translator rendered ${source.article} ${source.name} novel into ${targetName}, so that a new translator can stay consistent with their choices.
+
+You get one chapter in ${source.name} and the same chapter in the published ${targetName} translation. The two may not start or end at exactly the same sentence.
 
 Record decisions a new translator must repeat:
 - names of people, places, organizations, ships, books and other named things: whether they were kept, translated, transliterated or adapted, and the exact rendering;
@@ -55,13 +85,14 @@ Record decisions a new translator must repeat:
 - facts that affect grammar in ${targetName}, such as a character's gender, recorded as attributes.
 
 Give the rendering in its dictionary form (nominative, base form) as "target", and list other forms you saw in "targetSeen".
-Skip ordinary words and phrases that any dictionary would translate the same way. Quotes must be short (at most 25 words), and notes one or two sentences.
+${isEnglish(source) ? "" : `${baseFormRule(source)}\n`}Skip ordinary words and phrases that any dictionary would translate the same way. Quotes must be short (at most 25 words), and notes one or two sentences.
 Record each name or term once per chapter, with the most important ones first.
 Also note general conventions of this translator in "styleNotes" (dialogue punctuation, units, how footnotes or foreign words are handled, swearing, register).
 Write notes in English.${languageNotesBlock(targetName, languageNotes)}`;
 }
 
 export function readBlocks(input: {
+  source: SourceLanguage;
   targetName: string;
   languageNotes: string;
   sourceText: string;
@@ -69,19 +100,19 @@ export function readBlocks(input: {
   part: { index: number; count: number } | null;
 }): PromptBlock[] {
   const partNote = input.part
-    ? `\nThis is part ${input.part.index + 1} of ${input.part.count} of a long chapter; the translated excerpt may start a little earlier or end a little later than the English one.`
+    ? `\nThis is part ${input.part.index + 1} of ${input.part.count} of a long chapter; the translated excerpt may start a little earlier or end a little later than the ${input.source.name} one.`
     : "";
   return [
     {
       role: "system",
       label: "instructions",
-      text: readSystem(input.targetName, input.languageNotes),
+      text: readSystem(input.source, input.targetName, input.languageNotes),
       cacheBreakpoint: true,
     },
     {
       role: "user",
       label: "chapter pair",
-      text: `# English chapter${partNote}\n\n${input.sourceText}\n\n# ${input.targetName} translation\n\n${input.targetText}`,
+      text: `# ${input.source.name} chapter${partNote}\n\n${input.sourceText}\n\n# ${input.targetName} translation\n\n${input.targetText}`,
     },
   ];
 }
@@ -118,8 +149,12 @@ export type MergeDecision = z.infer<typeof MergeDecision>;
 export const MergeOutput = z.object({ decisions: z.array(MergeDecision) });
 export type MergeOutput = z.infer<typeof MergeOutput>;
 
-export function mergeSystem(targetName: string, languageNotes: string): string {
-  return `You turn notes about a published English→${targetName} translation into a clean knowledge base for future translators.
+export function mergeSystem(
+  source: SourceLanguage,
+  targetName: string,
+  languageNotes: string,
+): string {
+  return `You turn notes about a published ${source.name}→${targetName} translation into a clean knowledge base for future translators.
 
 Each group below collects what was observed about one name or term across the book's chapters: the renderings seen (with how often), facts, notes and examples.
 
@@ -142,6 +177,7 @@ export const StyleOutput = z.object({
 export type StyleOutput = z.infer<typeof StyleOutput>;
 
 export function styleBlocks(
+  source: SourceLanguage,
   targetName: string,
   languageNotes: string,
   notes: string,
@@ -150,7 +186,7 @@ export function styleBlocks(
     {
       role: "system",
       label: "instructions",
-      text: `You summarize the conventions a professional translator followed when translating an English novel into ${targetName}. Merge the notes below into at most 30 clear, general rules a new translator should follow, most important first. Drop notes that are one-offs or contradict the majority. Add one short example to a rule when it helps.${languageNotesBlock(targetName, languageNotes)}`,
+      text: `You summarize the conventions a professional translator followed when translating ${source.article} ${source.name} novel into ${targetName}. Merge the notes below into at most 30 clear, general rules a new translator should follow, most important first. Drop notes that are one-offs or contradict the majority. Add one short example to a rule when it helps.${languageNotesBlock(targetName, languageNotes)}`,
     },
     {
       role: "user",

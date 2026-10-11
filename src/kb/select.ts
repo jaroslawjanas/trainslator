@@ -1,6 +1,7 @@
 import { estimateTokens } from "../llm/tokens.ts";
 import type { Kb } from "../shared/schemas/kb.ts";
 import type { RefKbMode } from "../shared/schemas/project.ts";
+import { inflection, textIndex } from "./match.ts";
 import { renderReferenceKbs } from "./render.ts";
 
 export interface ReferenceSelection {
@@ -36,6 +37,8 @@ export function selectReferenceKbs(
   bookText: string,
   mode: RefKbMode,
   smallestContext: number,
+  /** The book's language: names may appear inflected in it. */
+  lang: string,
 ): ReferenceSelection {
   const totalEntries = refs.reduce((s, r) => s + r.kb.entries.length, 0);
   if (refs.length === 0) return { text: null, mode: "all", tokens: 0, entries: 0, totalEntries: 0 };
@@ -51,13 +54,13 @@ export function selectReferenceKbs(
       totalEntries,
     };
   const lower = bookText.toLowerCase();
+  const forms = inflection(lang);
+  const inBook = forms ? textIndex(bookText, forms) : (t: string) => mentioned(t, lower);
   const relevant = refs.map((r) => ({
     title: r.title,
     kb: {
       ...r.kb,
-      entries: r.kb.entries.filter((e) =>
-        [e.source, ...e.aliases].some((t) => mentioned(t, lower)),
-      ),
+      entries: r.kb.entries.filter((e) => [e.source, ...e.aliases].some(inBook)),
     },
   }));
   const text = renderReferenceKbs(relevant);

@@ -60,7 +60,8 @@ async function main(): Promise<void> {
     }
     const tocUnits = extractTocUnits(book);
     for (const u of tocUnits) if (u.translate) translations.set(u.key, u.text);
-    const segments = buildSegments(book, "en");
+    // Front and back matter are guessed in the book's own language.
+    const segments = buildSegments(book, book.pkg.languages[0] ?? "en");
 
     const problems: string[] = [];
     try {

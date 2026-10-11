@@ -24,7 +24,7 @@ import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
-import { useProject } from "../ProjectPage.tsx";
+import { useProject, useSourceName } from "../ProjectPage.tsx";
 import { useSettings } from "../SettingsPage.tsx";
 import { TranslationModeChoice } from "./TranslationModeChoice.tsx";
 import type { BookDetail, ChapterView, UnitView } from "./types.ts";
@@ -63,6 +63,7 @@ function Spread({
   chapter: ChapterView;
   targetName: string;
 }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const [filter, setFilter] = useState<Filter>("all");
   const [showTags, setShowTags] = useState(false);
@@ -177,7 +178,7 @@ function Spread({
       {units.length > 0 && (
         <div className="tr-spread">
           <div className="tr-spread-head">
-            <div>English</div>
+            <div>{source}</div>
             <div />
             <div>{targetName}</div>
             <div />
@@ -220,6 +221,7 @@ function Spread({
 }
 
 function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const key = ["target", bookId, "toc"];
   const { data } = useQuery({
@@ -262,7 +264,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
       <Table>
         <Table.Thead>
           <Table.Tr>
-            <Table.Th w="45%">English label</Table.Th>
+            <Table.Th w="45%">{source} label</Table.Th>
             <Table.Th>Translation</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -317,6 +319,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
 }
 
 function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
+  const source = useSourceName(pid);
   const { data } = useQuery({
     queryKey: ["target", bookId, "glossary"],
     queryFn: () =>
@@ -345,7 +348,7 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th>English</Table.Th>
+              <Table.Th>{source}</Table.Th>
               <Table.Th>Translation</Table.Th>
               <Table.Th>Note</Table.Th>
             </Table.Tr>

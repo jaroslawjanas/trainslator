@@ -1,6 +1,6 @@
 import { stripPlaceholders } from "../epub/blocks.ts";
 import { loadResults } from "../pipeline/phase3.ts";
-import { checkUnitTranslation } from "../pipeline/validate.ts";
+import { checkUnitTranslation, languageChecks } from "../pipeline/validate.ts";
 import type { AppContext } from "../server/context.ts";
 import { unicodeScriptsFor } from "../shared/languages.ts";
 import { nowIso } from "../shared/schemas/common.ts";
@@ -141,7 +141,11 @@ async function unitAndScripts(app: AppContext, pid: string, bookId: string, key:
   const unit = units.get(key);
   if (!unit) throw new NotFoundError("Unit");
   const project = await app.projects.get(pid);
-  return { unit, scripts: unicodeScriptsFor(project.targetScript) };
+  return {
+    unit,
+    scripts: unicodeScriptsFor(project.targetScript),
+    languages: languageChecks(project.sourceLang, project.targetLang),
+  };
 }
 
 /** Throws when a translation you wrote can't be used (broken or missing placeholders). */
@@ -152,8 +156,8 @@ export async function checkOwnText(
   key: string,
   text: string,
 ): Promise<void> {
-  const { unit, scripts } = await unitAndScripts(app, pid, bookId, key);
-  const check = checkUnitTranslation(unit, text, { targetScripts: scripts, ratio: 1 });
+  const { unit, scripts, languages } = await unitAndScripts(app, pid, bookId, key);
+  const check = checkUnitTranslation(unit, text, { targetScripts: scripts, ratio: 1, languages });
   const blocking = check.errors.filter(
     (e) => !e.startsWith("contains Markdown") && !e.startsWith("is wrapped in quotation"),
   );
@@ -207,7 +211,7 @@ export async function acceptUnit(
   bookId: string,
   key: string,
 ): Promise<void> {
-  const { unit, scripts } = await unitAndScripts(app, pid, bookId, key);
+  const { unit, scripts, languages } = await unitAndScripts(app, pid, bookId, key);
   const results = await loadResults(app.paths, pid, bookId);
   const result = [...results.values()].find((r) => r.units.some((u) => u.key === key));
   const current = result?.units.find((u) => u.key === key);
@@ -216,6 +220,7 @@ export async function acceptUnit(
   const errors = checkUnitTranslation(unit, current.text, {
     targetScripts: scripts,
     ratio: 1,
+    languages,
   }).errors;
   if (errors.length > 0)
     throw new UserError(`It can't be accepted as is: ${errors.join("; ")}. Edit it instead.`);

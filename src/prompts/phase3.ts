@@ -32,6 +32,8 @@ export interface Phase3Unit {
 
 export interface Phase3PromptInput {
   sourceName: string;
+  /** Inflected source languages: coined terms in their base form. Off (absent) for English. */
+  baseForms?: boolean;
   targetName: string;
   targetTag: string;
   languageNotes: string;
@@ -57,7 +59,12 @@ export function phase3System(
   targetName: string,
   targetTag: string,
   languageNotes: string,
+  /** Inflected source languages: coined terms in their base form. Off for English. */
+  baseForms = false,
 ): string {
+  const coinedForm = baseForms
+    ? ` Give "source" in its ${sourceName} base form (nominative singular, without an article).`
+    : "";
   return `You are an experienced literary translator. Translate ${sourceName} text into ${targetName} (${targetTag}).
 
 The input is a JSON array of units from a book, in reading order. Each unit is a paragraph, heading, caption, list item or similar, given as {"id", "text"}.
@@ -73,7 +80,7 @@ Rules:
 4. Translate everything, including headings, titles and captions. Keep numbers, URLs, and passages meant to stay in another language as they are.
 5. Follow the knowledge bases: use the listed names, terms and style rules consistently.
 6. Preserve the author's tone, register, rhythm and paragraphing. Don't summarize, soften or add anything.
-7. If you invent a translation for a name or recurring term that isn't in the knowledge bases, list it in "coined" (kind, source, your translation, a short note). Otherwise return an empty "coined" array.${languageNotesBlock(targetName, languageNotes)}`;
+7. If you invent a translation for a name or recurring term that isn't in the knowledge bases, list it in "coined" (kind, source, your translation, a short note).${coinedForm} Otherwise return an empty "coined" array.${languageNotesBlock(targetName, languageNotes)}`;
 }
 
 /** Prompt blocks for one chunk, ordered from most to least stable for caching. */
@@ -82,7 +89,13 @@ export function phase3Blocks(input: Phase3PromptInput): PromptBlock[] {
     {
       role: "system",
       label: "instructions",
-      text: phase3System(input.sourceName, input.targetName, input.targetTag, input.languageNotes),
+      text: phase3System(
+        input.sourceName,
+        input.targetName,
+        input.targetTag,
+        input.languageNotes,
+        input.baseForms,
+      ),
       cacheBreakpoint: !input.referenceKb && !input.bookKb,
     },
   ];
@@ -169,6 +182,7 @@ export type TocOutput = z.infer<typeof TocOutput>;
 
 export function tocBlocks(input: {
   sourceName: string;
+  baseForms?: boolean;
   targetName: string;
   targetTag: string;
   languageNotes: string;
@@ -180,7 +194,7 @@ export function tocBlocks(input: {
     {
       role: "system",
       label: "instructions",
-      text: `${phase3System(input.sourceName, input.targetName, input.targetTag, input.languageNotes)}
+      text: `${phase3System(input.sourceName, input.targetName, input.targetTag, input.languageNotes, input.baseForms)}
 
 You are now translating the book's title and the labels of its table of contents and navigation. Keep labels consistent with the chapter headings already translated (listed below). Return {"items": [{"id", "text"}]} with one item per input unit.`,
     },

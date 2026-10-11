@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "tag": {
+      "type": "string",
+      "minLength": 2
+    },
+    "article": {
+      "type": "string",
+      "enum": ["a", "an"],
+      "description": "English article before the language's name: \"an English book\", \"a German book\"."
+    },
+    "keyArticles": {
+      "description": "Articles ignored at the start of names and terms when entries are matched. Keys of your own changes are stored with them, so changing the list changes which entries count as the same.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "endings": {
+      "description": "Endings a name or term may take in running text (German: s, en; Polish: a, owi …).",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "alternations": {
+      "description": "Stem changes before an ending: [\"r\", \"rz\"] lets Piotr match Piotrze.",
+      "type": "array",
+      "items": {
+        "type": "array",
+        "prefixItems": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "string",
+            "minLength": 1
+          }
+        ],
+        "items": false,
+        "minItems": 2,
+        "maxItems": 2
+      }
+    },
+    "commonWords": {
+      "description": "Very common function words, used to notice text left untranslated in this language.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "frontMatter": {
+      "description": "Title words of front matter; a trailing * matches any ending.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "backMatter": {
+      "description": "Title words of back matter; a trailing * matches any ending.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "chapterWords": {
+      "description": "Words like \"chapter\" or \"part\" that come with a number.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "numberWords": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
+    },
+    "ordinals": {
+      "description": "Ordinals, or ordinal stems the language's endings may follow.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+      }
+    },
+    "preambles": {
+      "description": "Phrases a model may start an answer with instead of the translation, in this language.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "required": ["tag", "article"],
+  "additionalProperties": false
+}

@@ -30,6 +30,52 @@ describe("alignment proposal", () => {
     expect(titleNumbers("I Was There")).toEqual([1]);
   });
 
+  it("reads number words next to a chapter word or as the whole title", () => {
+    expect(titleNumbers("Chapter One", "en")).toEqual([1]);
+    expect(titleNumbers("Part Two: The Storm", "en")).toEqual([2]);
+    expect(titleNumbers("Twenty-One", "en")).toEqual([21]);
+    expect(titleNumbers("Chapter Twenty-First", "en")).toEqual([21]);
+    expect(titleNumbers("Erstes Kapitel", "de")).toEqual([1]);
+    expect(titleNumbers("Kapitel zwölf", "de")).toEqual([12]);
+    expect(titleNumbers("Rozdział pierwszy", "pl")).toEqual([1]);
+    expect(titleNumbers("Część druga", "pl")).toEqual([2]);
+    expect(titleNumbers("Rozdział dwudziesty pierwszy", "pl")).toEqual([21]);
+    expect(titleNumbers("Dwadzieścia jeden", "pl")).toEqual([21]);
+  });
+
+  it("ignores number words that aren't a chapter number", () => {
+    expect(titleNumbers("The First Day", "en")).toEqual([]);
+    expect(titleNumbers("One Last Night", "en")).toEqual([]);
+    expect(titleNumbers("Die erstaunliche Reise", "de")).toEqual([]);
+    expect(titleNumbers("Chapter One", "fr")).toEqual([]);
+    // Digits and Roman numerals win; without a language only they count.
+    expect(titleNumbers("Chapter One (7)", "en")).toEqual([7]);
+    expect(titleNumbers("Chapter One")).toEqual([]);
+  });
+
+  it("matches chapters by number words across languages", () => {
+    const a = [
+      seg("a0", "Chapter One", 3000),
+      seg("a1", "Chapter Two", 3000),
+      seg("a2", "Chapter Three", 3000),
+    ];
+    const b = [
+      seg("b0", "Rozdział pierwszy", 2000),
+      seg("b1", "Rozdział drugi", 3000),
+      seg("b2", "Rozdział trzeci", 3000),
+    ];
+    const languages = { source: "en", target: "pl" };
+    const al = proposeAlignment(a, b, { source: 1, target: 1 }, { languages });
+    expect(al.units.map((u) => [u.source, u.target])).toEqual([
+      [["a0"], ["b0"]],
+      [["a1"], ["b1"]],
+      [["a2"], ["b2"]],
+    ]);
+    // The matching numbers make the pairing more certain than lengths alone.
+    const plain = proposeAlignment(a, b, { source: 1, target: 1 });
+    expect(al.units[0]!.confidence!).toBeGreaterThan(plain.units[0]!.confidence!);
+  });
+
   it("pairs chapters one to one when lengths agree", () => {
     const a = [
       seg("a0", "Chapter 1", 3000),

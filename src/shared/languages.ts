@@ -19,6 +19,7 @@ export const COMMON_LANGUAGES: readonly string[] = [
   "da",
   "de",
   "el",
+  "en",
   "eo",
   "es",
   "es-419",

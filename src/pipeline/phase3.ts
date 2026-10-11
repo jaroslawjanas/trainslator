@@ -24,7 +24,7 @@ import {
   TocOutput,
   tocBlocks,
 } from "../prompts/phase3.ts";
-import { unicodeScriptsFor } from "../shared/languages.ts";
+import { primarySubtag, unicodeScriptsFor } from "../shared/languages.ts";
 import { addUsage, emptyUsage, type Usage } from "../shared/schemas/common.ts";
 import type { Segment } from "../shared/schemas/epub.ts";
 import type { TranslationMode } from "../shared/schemas/project.ts";
@@ -41,7 +41,7 @@ import {
 } from "../shared/schemas/translation.ts";
 import { listDir, readJson, updateJson, writeJson } from "../store/json.ts";
 import type { DataPaths } from "../store/paths.ts";
-import { type CheckContext, checkChunk, checkUnitTranslation } from "./validate.ts";
+import { type CheckContext, checkChunk, checkUnitTranslation, languageChecks } from "./validate.ts";
 
 export interface Phase3Languages {
   sourceLang: string;
@@ -87,6 +87,11 @@ export interface Phase3Env {
 // ---------------------------------------------------------------------------
 // Planning
 // ---------------------------------------------------------------------------
+
+/** Sources other than English inflect names: coined terms are asked for in their base form. */
+function baseFormsFor(env: Phase3Env): boolean {
+  return primarySubtag(env.languages.sourceLang) !== "en";
+}
 
 /** Expected output tokens per source token, by target script (rough). */
 function expansionFor(script: string | null): number {
@@ -327,6 +332,7 @@ export function chunkInputsHash(
         env.languages.targetName,
         env.languages.targetLang,
         env.languageNotes,
+        baseFormsFor(env),
       ),
       env.referenceKb,
       env.bookKb,
@@ -385,6 +391,7 @@ function checkContext(state: RunState): CheckContext {
   return {
     targetScripts: unicodeScriptsFor(state.env.languages.targetScript),
     ratio: medianRatio(state),
+    languages: languageChecks(state.env.languages.sourceLang, state.env.languages.targetLang),
   };
 }
 
@@ -543,6 +550,7 @@ async function requestUnits(
   const around = chapters ? chapterContext(state, chapter, units, options.fresh ?? []) : null;
   const blocks = phase3Blocks({
     sourceName: env.languages.sourceName,
+    baseForms: baseFormsFor(env),
     targetName: env.languages.targetName,
     targetTag: env.languages.targetLang,
     languageNotes: env.languageNotes,
@@ -1131,6 +1139,7 @@ export async function translateToc(env: Phase3Env, prepared: PreparedPhase3): Pr
   const ctx: CheckContext = {
     targetScripts: unicodeScriptsFor(env.languages.targetScript),
     ratio: 1,
+    languages: languageChecks(env.languages.sourceLang, env.languages.targetLang),
   };
   const result = await callStructured(env.rt, env.tocTarget, {
     projectId: env.projectId,
@@ -1138,6 +1147,7 @@ export async function translateToc(env: Phase3Env, prepared: PreparedPhase3): Pr
     label: "title and table of contents",
     blocks: tocBlocks({
       sourceName: env.languages.sourceName,
+      baseForms: baseFormsFor(env),
       targetName: env.languages.targetName,
       targetTag: env.languages.targetLang,
       languageNotes: env.languageNotes,

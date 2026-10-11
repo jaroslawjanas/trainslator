@@ -16,11 +16,11 @@ to a finished book, with screenshots, recommendations and troubleshooting.
 
 ## How it works
 
-1. **Reference pairs (phase 1).** You add an English book and its published translation. The
+1. **Reference pairs (phase 1).** You add a book and its published translation. The
    app proposes which chapters match; you check and confirm. The AI then reads each chapter
    pair and builds a knowledge base of the translator's decisions: names, invented terms,
    wordplay, forms of address and style. Ordinary words are left out. Pairs are optional.
-2. **Reading the new book (phase 2).** The AI reads the new English book chapter by chapter,
+2. **Reading the new book (phase 2).** The AI reads the new book chapter by chapter,
    before anything is translated. It writes a synopsis of each chapter and builds the book's own
    knowledge base, consistent with the reference pairs. Things it can't decide yet (say, a
    character's gender) become open questions that later chapters, or you, answer.
@@ -35,8 +35,13 @@ to a finished book, with screenshots, recommendations and troubleshooting.
 Each phase starts only when you press its button, so you can review and edit the knowledge
 bases in between. Your edits are kept when a phase runs again.
 
-The source language is English (the instructions to the AI are written in English). The target
-can be any language, including right-to-left ones.
+Books can be translated from **English, German or Polish** into any language, including
+right-to-left ones. You pick both when you create a project. The instructions to the AI are in
+English with the source language named in them, and the AI's notes (synopses, knowledge base
+notes, questions) stay in English too. German and Polish change the form of names ("des Ordens",
+"w Krakowie"), so for them the AI is asked for names and terms in their base form, and the app
+finds them in any form when it counts where an entry appears or which reference entries a book
+needs.
 
 ## Features
 
@@ -51,7 +56,8 @@ can be any language, including right-to-left ones.
   the exact text the model receives. Your changes are locked and survive re-runs.
 - **Alignment** of reference books by chapter, proposed by length or with AI.
 - **Translation in chunks or whole chapters,** with checks on every answer, automatic repair
-  turns, and passages that need attention marked for you.
+  turns, and passages that need attention marked for you, including passages that may still be
+  partly in the source language.
 - **Review** with up to three versions side by side, a chapter list with differences, resizable
   columns, editing, rewriting a passage or a selection with any model, copying between versions,
   and search and replace across the book.
@@ -152,9 +158,9 @@ Back up the folder to keep your work. Deleting a project deletes its folder.
 | `pnpm build` | Builds the web UI into `dist/web`. |
 | `pnpm start` | One server on 127.0.0.1:5174 with the API and the built UI. |
 | `pnpm check` | Type check, lint and tests. |
-| `pnpm test:live --base-url … --model … --kind … --key-env …` | Runs every step against a real API on a tiny invented book (about 15 small requests) and reports whether prompt caching works. |
+| `pnpm test:live --base-url … --model … --kind … --key-env … [--source en\|de\|pl] [--target pl]` | Runs every step against a real API on a tiny invented book (about 15 small requests) and reports whether prompt caching works. |
 | `pnpm test:corpus` | Round-trips every EPUB in `data/corpus` through the reader and writer without AI, and reports anything that wouldn't survive translation unchanged. Good for checking unusual books. |
-| `pnpm translate:dev book.epub --target pl --base-url … --model …` | Phase 3 and build from the command line, without knowledge bases. For debugging. |
+| `pnpm translate:dev book.epub [--source de] --target pl --base-url … --model …` | Phase 3 and build from the command line, without knowledge bases. For debugging. |
 
 ## Security
 
@@ -176,8 +182,26 @@ input tokens, most of them cached, and 170,000 output tokens, in about 6 minutes
 
 ## Limitations
 
-- Source books must be in English.
+- Source books must be in English, German or Polish (see below for adding a language).
 - Fixed-layout EPUBs and DRM-protected books are rejected.
 - Text inside images, SVG and MathML is left as is.
 - For right-to-left targets, the text direction is set, but the book's CSS is not mirrored.
 - One user, one computer.
+
+## Adding a source language
+
+Each source language is a JSON file in `src/languages/` (`en.json`, `de.json`, `pl.json`), checked
+against `language.schema.json`, so an editor completes and validates the fields. To add one:
+
+1. Copy `de.json` to a file named after the language tag, for example `cs.json`, and fill it in:
+   - `article`: "a" or "an", as in "a Czech novel";
+   - `keyArticles`: articles to ignore when matching names (none for Czech);
+   - `endings` and `alternations`: case endings and stem changes, so names are found in any form;
+   - `frontMatter`, `backMatter` and `chapterWords`: title words that help guess the book's parts;
+   - `numberWords` and `ordinals`: for matching "Chapter One" with "Kapitola první";
+   - `commonWords`: frequent short words, used to notice text left untranslated;
+   - `preambles`: phrases a model may put before a translation into this language.
+2. Import the file in `src/languages/index.ts` and add its tag to `SOURCE_LANGUAGES`.
+3. Run `pnpm check`. The tests check every file against the schema.
+
+A language without a file can still be a target; a file only adds checks for it there.

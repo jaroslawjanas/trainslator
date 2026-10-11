@@ -29,6 +29,7 @@ import { DiagnosticsList } from "../../components/DiagnosticsList.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { StageMark } from "../../components/StageMark.tsx";
 import { displayTitle } from "../../lib/format.ts";
+import { useSourceName } from "../ProjectPage.tsx";
 import {
   mergeWithNext,
   moveFirstToPrevious,
@@ -147,6 +148,7 @@ function PreviewModal({
   unitId: string | null;
   onClose: () => void;
 }) {
+  const source = useSourceName(pid);
   const { data, isLoading, error } = useQuery({
     queryKey: ["preview", pairId, unitId],
     queryFn: () => get<Preview>(`/api/projects/${pid}/pairs/${pairId}/units/${unitId}/preview`),
@@ -188,7 +190,7 @@ function PreviewModal({
       {error && <Alert color="red">{(error as Error).message}</Alert>}
       {data && (
         <SimpleGrid cols={2}>
-          {side("English", data.source)}
+          {side(source, data.source)}
           {side("Translation", data.target)}
         </SimpleGrid>
       )}
@@ -197,6 +199,7 @@ function PreviewModal({
 }
 
 export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetail }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const navigate = useNavigate();
   const diagnostics = [...detail.source.diagnostics, ...detail.target.diagnostics];
@@ -274,7 +277,7 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
       <Group justify="space-between" align="flex-end" gap="md">
         <Group align="flex-end" gap="sm">
           <Select
-            label="English chapters"
+            label={`${source} chapters`}
             w={190}
             data={depthOptions(detail.source.maxDepth)}
             value={String(al.tocDepthSource)}
@@ -350,14 +353,14 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
       </Group>
       <Text size="sm" c="dimmed">
         {included.length} of {units.length} rows are used for learning. The translation is about{" "}
-        {detail.ratio.toFixed(2)} times as long as the English; the length column compares each row
+        {detail.ratio.toFixed(2)} times as long as the {source}; the length column compares each row
         with that.
       </Text>
       <Table highlightOnHover verticalSpacing="sm">
         <Table.Thead>
           <Table.Tr>
             <Table.Th w={44}>Use</Table.Th>
-            <Table.Th>English</Table.Th>
+            <Table.Th>{source}</Table.Th>
             <Table.Th>Translation</Table.Th>
             <Table.Th w={110}>Length</Table.Th>
             <Table.Th w={60} />

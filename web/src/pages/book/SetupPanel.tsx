@@ -239,7 +239,7 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
 
       <Section
         title="Files to translate"
-        description="Every file is translated unless you keep it in the original, for example an index or an English-only appendix."
+        description="Every file is translated unless you keep it in the original, for example an index or an appendix that stays in the original language."
       >
         <ScrollArea.Autosize mah={360}>
           <Table>

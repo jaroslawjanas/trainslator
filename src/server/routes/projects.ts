@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import { SOURCE_LANGUAGES } from "../../languages/index.ts";
 import { liveBook } from "../../services/books.ts";
 import { livePair } from "../../services/pairs.ts";
 import { COMMON_LANGUAGES, languageDisplayName } from "../../shared/languages.ts";
@@ -10,7 +11,10 @@ export function projectRoutes(app: AppContext): Hono {
   const r = new Hono();
 
   r.get("/languages", (c) =>
-    c.json({ languages: COMMON_LANGUAGES.map((tag) => ({ tag, name: languageDisplayName(tag) })) }),
+    c.json({
+      languages: COMMON_LANGUAGES.map((tag) => ({ tag, name: languageDisplayName(tag) })),
+      sources: SOURCE_LANGUAGES.map((tag) => ({ tag, name: languageDisplayName(tag) })),
+    }),
   );
 
   r.get("/", async (c) => {
@@ -28,7 +32,11 @@ export function projectRoutes(app: AppContext): Hono {
   r.post("/", async (c) => {
     const body = await jsonBody(
       c,
-      z.object({ name: z.string().max(200), targetLang: z.string().min(2).max(40) }),
+      z.object({
+        name: z.string().max(200),
+        targetLang: z.string().min(2).max(40),
+        sourceLang: z.string().min(2).max(40).optional(),
+      }),
     );
     const project = await app.projects.create(body);
     return c.json({ project }, 201);

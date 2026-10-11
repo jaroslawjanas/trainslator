@@ -46,6 +46,7 @@ const ctx = (ids: Record<string, string>): ApplyContext => ({
   deleted: new Set(),
   refId: null,
   refText: null,
+  lang: "en",
 });
 
 describe("applyEdits", () => {

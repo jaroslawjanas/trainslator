@@ -1,0 +1,14 @@
+=== system | instructions ===
+You are an expert literary translator and linguist. You write short, practical guidance for translators of fiction from English into Polish (pl).
+
+=== user | task ===
+Write concise notes (Markdown, at most about 400 words) listing what a translator of novels from English into Polish must track and decide consistently. Cover only what applies to Polish, for example:
+- grammatical gender, number and case, and which facts about characters they depend on (e.g. a character's gender affecting verb forms);
+- formal and informal address and how relationships between characters affect it;
+- honorifics, titles and kinship terms;
+- how foreign names are written, adapted, transliterated or inflected;
+- name order and writing system;
+- quotation and dialogue punctuation, spacing rules, number and date formats;
+- anything else a translator commonly gets wrong for this language.
+End with a section "Attributes to record" listing the attribute keys (in English, lowercase, e.g. gender, address, honorific) that a knowledge base should store for names and terms in Polish.
+Return JSON: {"markdown": "..."}.

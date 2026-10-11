@@ -3,7 +3,7 @@ import { callStructured } from "../llm/call.ts";
 import { estimateTokens } from "../llm/tokens.ts";
 import { loadResults } from "../pipeline/phase3.ts";
 import { bookKnowledge } from "../pipeline/phase3-job.ts";
-import { checkUnitTranslation } from "../pipeline/validate.ts";
+import { checkUnitTranslation, languageChecks } from "../pipeline/validate.ts";
 import { FRAGMENT_END, FRAGMENT_START, RewriteOutput, rewriteBlocks } from "../prompts/rewrite.ts";
 import type { AppContext } from "../server/context.ts";
 import { unicodeScriptsFor } from "../shared/languages.ts";
@@ -115,7 +115,7 @@ export async function reviewChapters(
   };
 }
 
-/** The English, as a "version" to search. */
+/** The original, as a "version" to search. */
 export const SOURCE = "source";
 
 /** Most results returned for one search. */
@@ -134,7 +134,7 @@ function snippet(text: string, match: { start: number; end: number }) {
 
 /**
  * Finds a text in the passages of the given versions ("source" for the
- * English), ignoring case and accents: in one chapter, or the whole book in
+ * original), ignoring case and accents: in one chapter, or the whole book in
  * reading order. One result per passage and version.
  */
 export async function searchReview(
@@ -220,7 +220,7 @@ export function replaceInText(
 export interface ReplaceRequest {
   query: string;
   replacement: string;
-  /** Versions to change; the English ("source") never is. */
+  /** Versions to change; the original ("source") never is. */
   versions: string[];
   /** One chapter, or null for the whole book. */
   chapterId: string | null;
@@ -244,7 +244,7 @@ export async function replaceInReview(
 ): Promise<{ passages: number; replaced: number; skipped: number }> {
   const versions = req.versions.filter((v) => v !== SOURCE);
   if (versions.length === 0)
-    throw new UserError("Choose a translation to replace in; the English isn't changed.");
+    throw new UserError("Choose a translation to replace in; the original isn't changed.");
   if (TAG_TEST.test(req.replacement))
     throw new UserError("The replacement can't contain formatting tags.");
   const plan = await loadPlan(app, pid, bookId);
@@ -455,7 +455,11 @@ export async function rewritePassage(
     fragment: sel !== null,
     instruction: req.instruction?.trim() || null,
   });
-  const ctx = { targetScripts: scripts, ratio: 1 };
+  const ctx = {
+    targetScripts: scripts,
+    ratio: 1,
+    languages: languageChecks(project.sourceLang, project.targetLang),
+  };
   const result = await callStructured(
     app.rt,
     {

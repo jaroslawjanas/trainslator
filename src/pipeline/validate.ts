@@ -1,6 +1,7 @@
 import { stripPlaceholders, type TransUnit } from "../epub/blocks.ts";
 import { tokenize } from "../epub/splice.ts";
-import { scriptShare } from "../shared/languages.ts";
+import { languageData } from "../languages/index.ts";
+import { languageDisplayName, primarySubtag, scriptShare } from "../shared/languages.ts";
 
 /**
  * Checks for translated units. Errors make the unit unusable (it gets a repair
@@ -18,6 +19,46 @@ export interface CheckContext {
   targetScripts: string[];
   /** Typical translation/source length ratio in graphemes (median). */
   ratio: number;
+  /** Checks that depend on the two languages; without them, an English source is assumed. */
+  languages?: LanguageChecks;
+}
+
+export interface LanguageChecks {
+  sourceName: string;
+  /** English sources keep the preamble rule they always had. */
+  englishSource: boolean;
+  /** Common words of the source language that aren't common in the target too. */
+  sourceCommon: Set<string>;
+  /** Preamble phrases in the target language (besides the English ones). */
+  targetPreamble: RegExp | null;
+}
+
+const languageChecksMemo = new Map<string, LanguageChecks>();
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** What the checks need to know about a source and target language. */
+export function languageChecks(sourceLang: string, targetLang: string): LanguageChecks {
+  const key = `${sourceLang}>${targetLang}`;
+  let checks = languageChecksMemo.get(key);
+  if (!checks) {
+    const source = languageData(sourceLang);
+    const target = languageData(targetLang);
+    const targetCommon = new Set(target?.commonWords ?? []);
+    const englishTarget = primarySubtag(targetLang) === "en";
+    const phrases = englishTarget ? [] : (target?.preambles ?? []);
+    checks = {
+      sourceName: languageDisplayName(sourceLang),
+      englishSource: primarySubtag(sourceLang) === "en",
+      sourceCommon: new Set((source?.commonWords ?? []).filter((w) => !targetCommon.has(w))),
+      targetPreamble:
+        phrases.length > 0 ? new RegExp(`^(${phrases.map(escapeRegExp).join("|")})`, "iu") : null,
+    };
+    languageChecksMemo.set(key, checks);
+  }
+  return checks;
 }
 
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -31,7 +72,35 @@ const HTML_TAG = /<\/?(i|b|em|strong|span|p|br|div|a|sup|sub|small|u|s)(\s[^>]*)
 const MALFORMED_PLACEHOLDER = /<\/?[gx]\s*\d*[^>]*$|<\/x\d+>|<x\d+>(?!\s*\/)|<g\d+\s*\/>/i;
 const MARKDOWN = /(\*\*[^*\n]+\*\*)|(^|\s)\*[^*\s][^*\n]*\*(?=\s|[.,;:!?]|$)|(^|\s)__[^_\n]+__/;
 const PREAMBLE = /^(here is|here's|sure[,!]|translation:|translated text:)/i;
+const TRANSLATION_WORD = /translat|übersetz|tłumacz|przekład/i;
 const QUOTES = /^["“”„«»‚‘’「『]/u;
+
+/**
+ * Whether an answer that starts like a preamble really is one: it mentions
+ * the translation or introduces something with a colon. Used where a phrase
+ * like "Sure," could also start a real translation (sources other than
+ * English, and preambles in the target language).
+ */
+function looksLikePreamble(text: string): boolean {
+  const first = text.split("\n")[0]!.slice(0, 120);
+  return TRANSLATION_WORD.test(first) || /^[^.!?]{0,60}:/u.test(first);
+}
+
+const WORDS = /\p{L}+/gu;
+
+/**
+ * Whether a translation is still largely in the source language: it uses the
+ * source's common words at least half as much as the source does.
+ */
+function soundsLikeSource(source: string, text: string, common: Set<string>): boolean {
+  const words = text.toLowerCase().match(WORDS) ?? [];
+  if (words.length < 8) return false;
+  const hits = words.filter((w) => common.has(w));
+  if (new Set(hits).size < 3) return false;
+  const sourceWords = source.toLowerCase().match(WORDS) ?? [];
+  const sourceShare = sourceWords.filter((w) => common.has(w)).length / sourceWords.length;
+  return sourceShare >= 0.15 && hits.length / words.length >= sourceShare / 2;
+}
 const QUOTES_END = /["“”„«»‚‘’」』]$/u;
 
 export function checkUnitTranslation(unit: TransUnit, text: string, ctx: CheckContext): UnitCheck {
@@ -93,7 +162,17 @@ export function checkUnitTranslation(unit: TransUnit, text: string, ctx: CheckCo
   if (HTML_TAG.test(plain) && !HTML_TAG.test(source))
     errors.push("contains HTML tags; use the placeholders instead");
   if (MARKDOWN.test(plain) && !MARKDOWN.test(source)) errors.push("contains Markdown formatting");
-  if (PREAMBLE.test(plain.trim()) && !PREAMBLE.test(source.trim()))
+  const lc = ctx.languages;
+  const englishPreamble =
+    PREAMBLE.test(plain.trim()) &&
+    !PREAMBLE.test(source.trim()) &&
+    (!lc || lc.englishSource || looksLikePreamble(plain.trim()));
+  const targetPreamble =
+    !!lc?.targetPreamble &&
+    lc.targetPreamble.test(plain.trim()) &&
+    !lc.targetPreamble.test(source.trim()) &&
+    looksLikePreamble(plain.trim());
+  if (englishPreamble || targetPreamble)
     errors.push("starts with a preamble instead of the translation");
   const t = plain.trim();
   const s = source.trim();
@@ -126,6 +205,13 @@ export function checkUnitTranslation(unit: TransUnit, text: string, ctx: CheckCo
     const share = scriptShare(t, ctx.targetScripts);
     if (share !== null && share < 0.5) warnings.push("mostly not in the target language's script");
   }
+  if (
+    lc &&
+    lc.sourceCommon.size > 0 &&
+    warnings.every((w) => !w.startsWith("identical") && !w.startsWith("mostly not")) &&
+    soundsLikeSource(s, t, lc.sourceCommon)
+  )
+    warnings.push(`may still be partly in ${lc.sourceName}`);
   return { errors, warnings };
 }
 

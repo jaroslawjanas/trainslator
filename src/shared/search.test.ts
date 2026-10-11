@@ -9,6 +9,19 @@ describe("search", () => {
     expect(findMatches("Łódź", "lodz")).toEqual([{ start: 0, end: 4 }]);
   });
 
+  it("counts ß as ss, covering the whole ß", () => {
+    const text = "Die Straße, die STRASSE und die GROẞE Brücke.";
+    const slices = (q: string) => findMatches(text, q).map((m) => text.slice(m.start, m.end));
+    expect(slices("strasse")).toEqual(["Straße", "STRASSE"]);
+    expect(slices("Straße")).toEqual(["Straße", "STRASSE"]);
+    expect(slices("grosse")).toEqual(["GROẞE"]);
+    // A match that ends or starts inside ß takes all of it.
+    expect(slices("stras")).toEqual(["Straß", "STRAS"]);
+    expect(slices("se,")).toEqual(["ße,"]);
+    // Accents still map back exactly, combining marks included.
+    expect(findMatches("Café x", "cafe")).toEqual([{ start: 0, end: 5 }]);
+  });
+
   it("finds nothing for an empty query", () => {
     expect(findMatches("anything", "  ")).toEqual([]);
   });

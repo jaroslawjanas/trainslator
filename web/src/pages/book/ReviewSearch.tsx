@@ -21,7 +21,7 @@ export interface SearchResult {
   chapterId: string;
   chapterTitle: string;
   key: string;
-  /** "source" for the English, else the version's id. */
+  /** "source" for the original, else the version's id. */
   version: string;
   /** How often the text occurs in this passage. */
   matches: number;
@@ -327,7 +327,7 @@ export function ReviewSearch({
           <Text size="xs" c="dimmed" mt={4}>
             {translations.length === 0
               ? "Tick a translation to replace in."
-              : `Replaces in ${translations.map(labelOf).join(" and ")}${searched.includes(SOURCE) ? "; the English isn't changed" : ""}. Replace changes the selected result's passage and goes to the next.`}
+              : `Replaces in ${translations.map(labelOf).join(" and ")}${searched.includes(SOURCE) ? `; the ${labelOf(SOURCE)} isn't changed` : ""}. Replace changes the selected result's passage and goes to the next.`}
           </Text>
         </>
       )}

@@ -1,6 +1,6 @@
 /**
  * Text search that by default ignores case and accents: "zrodlo" finds
- * "Źródło", and "ł" counts as "l". Shared by the server's search and replace
+ * "Źródło", "ł" counts as "l" and "ß" as "ss". Shared by the server's search and replace
  * and the page's highlighting, so all find the same places.
  */
 
@@ -11,20 +11,30 @@ export interface MatchOptions {
   wholeWord?: boolean;
 }
 
-/** The text folded for comparing, and where each folded character came from. */
-function fold(text: string): { folded: string; at: number[] } {
+/**
+ * The text folded for comparing, and where each folded character came from
+ * (its original character starts at `at` and ends at `end`; "ß" becomes two).
+ */
+function fold(text: string): { folded: string; at: number[]; end: number[] } {
   let folded = "";
   const at: number[] = [];
+  const end: number[] = [];
   for (let i = 0; i < text.length; ) {
     const ch = String.fromCodePoint(text.codePointAt(i)!);
-    const f = ch.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/ł/g, "l");
+    const f = ch
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase()
+      .replace(/ł/g, "l")
+      .replace(/ß/g, "ss");
     for (let k = 0; k < f.length; k++) {
       folded += f[k];
       at.push(i);
+      end.push(i + ch.length);
     }
     i += ch.length;
   }
-  return { folded, at };
+  return { folded, at, end };
 }
 
 /** The query as it is compared; empty when there's nothing to search for. */
@@ -62,10 +72,12 @@ export function findMatches(
   } else {
     const q = foldQuery(trimmed);
     if (!q) return [];
-    const { folded, at } = fold(text);
+    const { folded, at, end } = fold(text);
     for (let i = folded.indexOf(q); i >= 0; i = folded.indexOf(q, i + q.length)) {
       const after = i + q.length;
-      found.push({ start: at[i]!, end: after < at.length ? at[after]! : text.length });
+      // A match that ends inside "ß" ("stras" in "Straße") covers all of it.
+      const next = after < at.length ? at[after]! : text.length;
+      found.push({ start: at[i]!, end: Math.max(end[after - 1]!, next) });
     }
   }
   if (options.wholeWord)

@@ -15,12 +15,13 @@ import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
+import { languageDisplayName } from "../../../src/shared/languages.ts";
 import { del, get, patch, post, upload } from "../api/client.ts";
 import type { Book, Job, Pair, ProjectDetail } from "../api/types.ts";
 import { useJobs } from "../components/JobsIndicator.tsx";
 import { PageHeader, Section } from "../components/PageHeader.tsx";
 import { StageMark } from "../components/StageMark.tsx";
-import { displayTitle, plural } from "../lib/format.ts";
+import { displayTitle, plural, withArticle } from "../lib/format.ts";
 import { BOOK_STAGES, type MarkState, PAIR_STAGES } from "../lib/stages.ts";
 import { LanguageNotesPanel } from "./project/LanguageNotesPanel.tsx";
 import { UsagePanel } from "./project/UsagePanel.tsx";
@@ -33,6 +34,12 @@ export function useProject(pid: string) {
   });
 }
 
+/** The name of the project's source language: "English", "German". */
+export function useSourceName(pid: string): string {
+  const project = useProject(pid).data?.project;
+  return project ? languageDisplayName(project.sourceLang) : "original";
+}
+
 function UploadPairModal({
   pid,
   opened,
@@ -42,6 +49,7 @@ function UploadPairModal({
   opened: boolean;
   onClose: () => void;
 }) {
+  const sourceName = useSourceName(pid);
   const client = useQueryClient();
   const navigate = useNavigate();
   const [source, setSource] = useState<File | null>(null);
@@ -51,11 +59,11 @@ function UploadPairModal({
     <Modal opened={opened} onClose={onClose} title="Add a reference pair">
       <Stack>
         <Text size="sm" c="dimmed">
-          An English book and its published human translation, both as DRM-free EPUB files. The AI
-          learns the translator's choices from them.
+          {withArticle(sourceName)} book and its published human translation, both as DRM-free EPUB
+          files. The AI learns the translator's choices from them.
         </Text>
         <FileInput
-          label="English original"
+          label={`${sourceName} original`}
           placeholder="Choose an EPUB file"
           accept=".epub,application/epub+zip"
           value={source}
@@ -113,6 +121,7 @@ function UploadBookModal({
   opened: boolean;
   onClose: () => void;
 }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
@@ -121,7 +130,7 @@ function UploadBookModal({
     <Modal opened={opened} onClose={onClose} title="Add a book to translate">
       <Stack>
         <FileInput
-          label="English book"
+          label={`${source} book`}
           description="A DRM-free EPUB file."
           placeholder="Choose an EPUB file"
           accept=".epub,application/epub+zip"
@@ -193,7 +202,7 @@ function Overview({
     <>
       <PageHeader
         title={project.name}
-        description={`Translates books from English into ${project.targetLangName}, consistent with the reference pairs below.`}
+        description={`Translates books from ${languageDisplayName(project.sourceLang)} into ${project.targetLangName}, consistent with the reference pairs below.`}
         actions={
           <>
             <Button variant="default" onClick={onAddPair}>
@@ -210,7 +219,8 @@ function Overview({
         >
           {books.length === 0 ? (
             <Text size="md" c="dimmed">
-              No books yet. Add the English book you want translated.
+              No books yet. Add the {languageDisplayName(project.sourceLang)} book you want
+              translated.
             </Text>
           ) : (
             <div>
@@ -232,7 +242,7 @@ function Overview({
         </Section>
         <Section
           title="Reference pairs"
-          description="English books with their published translations. Phase 1 learns names, terms and style from them."
+          description={`${languageDisplayName(project.sourceLang)} books with their published translations. Phase 1 learns names, terms and style from them.`}
         >
           {pairs.length === 0 ? (
             <Text size="md" c="dimmed">
@@ -310,6 +320,14 @@ function ProjectOptions({ detail }: { detail: ProjectDetail }) {
               Rename
             </Button>
           </Group>
+        </Section>
+        <Section
+          title="Languages"
+          description="Set when the project was created. To translate between other languages, create a new project."
+        >
+          <Text size="sm">
+            From {languageDisplayName(project.sourceLang)} into {project.targetLangName}
+          </Text>
         </Section>
         <Section title="Review">
           <Switch

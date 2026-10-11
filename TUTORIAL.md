@@ -81,9 +81,9 @@ you can compare and restore.
 
 | Term | Meaning |
 |---|---|
-| Project | Translates books from English into one target language. Holds its reference pairs, books, language notes and usage. |
-| Reference pair | An English book and its published translation into the project's language, used only for learning (phase 1). |
-| Book | The English EPUB you want translated. |
+| Project | Translates books from one source language (English, German or Polish) into one target language. Holds its reference pairs, books, language notes and usage. |
+| Reference pair | A book in the source language and its published translation into the project's language, used only for learning (phase 1). |
+| Book | The EPUB in the source language you want translated. |
 | Knowledge base | A list of entries (names, places, terms, phrases, wordplay) with their translations, facts such as gender, notes and examples, plus numbered style rules. Each pair and each book has one. |
 | Open question | A knowledge base entry the AI couldn't decide, with the question it needs answered. |
 | Locked entry | An entry you saved. Locked entries are kept exactly as you set them when phases run again; the AI can only leave suggestions for them. |
@@ -426,9 +426,22 @@ The advisor's usage has its own row on the Usage page.
 ### Creating a project
 
 On **All projects**, press **New project**. Give it a **Name** (for example "Fantasy series into
-Polish") and choose **Translate into**. You can search languages by name or type any language code
-such as `pl`, `pt-BR` or `zh-Hant`. The source language is always English for now. The app works
-out the target language's script and writing direction itself.
+Polish"), choose **Translate from** (English, German or Polish) and **Translate into**. You can
+search target languages by name or type any language code such as `pl`, `pt-BR` or `zh-Hant`. The
+app works out the target language's script and writing direction itself. Both languages are fixed
+once the project exists; **Project settings** shows them.
+
+This guide's examples translate an English book into Polish. In a project with a German or Polish
+source, the app says German or Polish wherever this guide says English: in column headings, in
+**Review**, in the build report. The instructions to the AI and its own notes (synopses, entry
+notes, questions) are in English whatever the source.
+
+With a German or Polish source, names and terms change form in the text: *des Ordens* for *Orden*,
+*Krakowa* for *Kraków*. The AI is asked to list them in their base form (nominative, without an
+article), and the app finds an entry in any of its forms when it counts the chapters an entry
+appears in and when it picks the reference entries a book needs (**Only entries in this book**).
+When a book or pair is imported, the app also warns if an EPUB says it's in a different language
+than the one it's used as.
 
 The project page lists its **Books**, each with marks for Reading, Translation and Build, and its
 **Reference pairs**, each with the number of entries learned. **Add reference pair** and
@@ -580,8 +593,8 @@ is your target language:
 | Field | Meaning |
 |---|---|
 | **Kind, Treatment** | What it is, and how the translation handles it. |
-| **Name or term** | As it appears in the English text. |
-| **Also written as** | Other English spellings or short forms, such as a nickname. |
+| **Name or term** | As it appears in the source text; for German and Polish in its base form (nominative, without an article). |
+| **Also written as** | Other spellings or short forms in the source language, such as a nickname. |
 | **Translation** | Its dictionary form in the target language: the form a dictionary would list. |
 | **Other forms in (target language)** | Inflected forms and variants that appear in the translated text, for example *Ady, Adzie, Adę* for *Ada*. |
 | **Facts (attributes)** | Key and value pairs such as `gender: female`, `address: formal with Hale`, `age: about 60`. These decide verb forms and forms of address in many languages. |
@@ -901,7 +914,7 @@ twice. A passage that still fails is marked as needing attention, and its best a
 | an empty translation | identical to the English (untranslated?) |
 | a required placeholder missing or repeated; placeholders not properly nested; unknown or malformed placeholders | mostly not in the target language's script |
 | HTML tags or Markdown in the text | the same text as a neighbouring passage (shifted?) |
-| a preamble such as "Here is the translation:" | |
+| a preamble such as "Here is the translation:" | may still be partly in the source language (many of its common words are left) |
 | quotation marks around a whole passage that aren't in the English | |
 
 ### Reading the result

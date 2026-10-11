@@ -60,15 +60,17 @@ export async function loadKb(
 async function change(
   app: AppContext,
   scope: KbScope,
-  fn: (o: KbOverrides, kb: Kb) => KbOverrides,
+  fn: (o: KbOverrides, kb: Kb, lang: string) => KbOverrides,
 ): Promise<Kb> {
   const f = files(app, scope);
   return withFileLock(f.overrides, () =>
     withFileLock(f.kb, async () => {
       const { kb, overrides } = await loadKb(app, scope);
-      const next = fn(overrides, kb);
+      // Name keys depend on the language the names are in: the project's source language.
+      const lang = (await app.projects.get(scope.pid)).sourceLang;
+      const next = fn(overrides, kb, lang);
       await writeJson(f.overrides, KbOverrides, next);
-      return writeJson(f.kb, Kb, applyOverrides(kb, next));
+      return writeJson(f.kb, Kb, applyOverrides(kb, next, lang));
     }),
   );
 }
@@ -84,14 +86,18 @@ export function assertNotBusy(app: AppContext, scope: KbScope): void {
 
 export async function editEntry(app: AppContext, scope: KbScope, entry: KbEntry): Promise<Kb> {
   assertNotBusy(app, scope);
-  return change(app, scope, (o, kb) => {
+  return change(app, scope, (o, kb, lang) => {
     if (!kb.entries.some((e) => e.id === entry.id) && !o.entries[entry.id])
       throw new NotFoundError("Entry");
-    return lockEntry(o, {
-      ...entry,
-      status: entry.status === "open" && !entry.target ? "open" : "locked",
-      origin: entry.origin,
-    });
+    return lockEntry(
+      o,
+      {
+        ...entry,
+        status: entry.status === "open" && !entry.target ? "open" : "locked",
+        origin: entry.origin,
+      },
+      lang,
+    );
   });
 }
 
@@ -138,7 +144,7 @@ export async function addEntry(
   draft: Omit<KbEntry, "id" | "updatedAt" | "origin" | "refs">,
 ): Promise<Kb> {
   assertNotBusy(app, scope);
-  return change(app, scope, (o, kb) => {
+  return change(app, scope, (o, kb, lang) => {
     const taken = new Set([...kb.entries.map((e) => e.id), ...Object.keys(o.entries)]);
     const entry: KbEntry = {
       ...draft,
@@ -148,7 +154,7 @@ export async function addEntry(
       updatedAt: nowIso(),
       status: "locked",
     };
-    return lockEntry(o, entry);
+    return lockEntry(o, entry, lang);
   });
 }
 
@@ -172,10 +178,10 @@ export async function unlock(app: AppContext, scope: KbScope, id: string): Promi
 
 export async function removeEntry(app: AppContext, scope: KbScope, id: string): Promise<Kb> {
   assertNotBusy(app, scope);
-  return change(app, scope, (o, kb) => {
+  return change(app, scope, (o, kb, lang) => {
     const entry = kb.entries.find((e) => e.id === id) ?? o.entries[id]?.entry;
     if (!entry) throw new NotFoundError("Entry");
-    return deleteEntry(o, entry);
+    return deleteEntry(o, entry, lang);
   });
 }
 
@@ -190,17 +196,21 @@ export async function answerQuestion(
     attributes: { key: string; value: string }[] | null;
   },
 ): Promise<Kb> {
-  return change(app, scope, (o, kb) => {
+  return change(app, scope, (o, kb, lang) => {
     const entry = kb.entries.find((e) => e.id === id) ?? o.entries[id]?.entry;
     if (!entry) throw new NotFoundError("Entry");
-    return lockEntry(o, {
-      ...entry,
-      target: answer.target ?? entry.target,
-      note: answer.note ?? entry.note,
-      attributes: answer.attributes ?? entry.attributes,
-      question: null,
-      status: "locked",
-    });
+    return lockEntry(
+      o,
+      {
+        ...entry,
+        target: answer.target ?? entry.target,
+        note: answer.note ?? entry.note,
+        attributes: answer.attributes ?? entry.attributes,
+        question: null,
+        status: "locked",
+      },
+      lang,
+    );
   });
 }
 

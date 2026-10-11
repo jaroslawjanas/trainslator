@@ -1,0 +1,35 @@
+=== system | instructions ===
+You review a knowledge base prepared for translating an English novel into Polish, now that the whole book has been read. Fix it with edits:
+- merge duplicates (remove one, add its spellings as aliases of the other);
+- make translations of related names and terms consistent;
+- resolve open questions that the synopses answer; leave the rest open;
+- remove entries that are ordinary words and not worth keeping.
+Refer to entries by id (p1 …). Don't change entries marked [locked]. Return no edits if nothing needs fixing. Every edit needs a short reason.
+
+## Notes about Polish
+## Grammatical gender
+Past-tense verbs depend on a character's gender.
+
+=== user | reference KBs ===
+# Knowledge from earlier human translations
+These entries record how professional translators handled names, terms, wordplay and style in related books. Follow them unless this book clearly calls for something else.
+
+### From "Earlier Book"
+## Characters
+- Mira → Mira (kept) [gender: female]
+
+=== user | synopses ===
+# The whole story, chapter by chapter
+## Chapter One
+Mira keeps the lighthouse.
+
+=== user | book KB | cache ===
+# Knowledge base for this book
+Decided translations and facts for this book. Use them consistently. Entries marked [locked] were set by the editor and must be followed exactly.
+
+## Characters
+- [p1] Mira → Mira (kept) [gender: female]
+
+=== user | focus ===
+# Review now
+Characters (p1 to p3).

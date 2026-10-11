@@ -5,7 +5,7 @@ export const Project = z.object({
   schemaVersion: SchemaVersion,
   id: Id,
   name: z.string().min(1),
-  /** Only "en" is offered for now. */
+  /** BCP-47 tag of the source language: English, German or Polish for now (languages/index.ts). */
   sourceLang: z.string().min(2),
   /** BCP-47 tag of the target language. */
   targetLang: z.string().min(2),

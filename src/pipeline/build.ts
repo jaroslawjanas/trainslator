@@ -11,7 +11,7 @@ import {
 import { readJson, writeFileAtomic, writeJsonAtomic } from "../store/json.ts";
 import type { DataPaths } from "../store/paths.ts";
 import { loadResults } from "./phase3.ts";
-import { checkUnitTranslation } from "./validate.ts";
+import { checkUnitTranslation, type LanguageChecks, languageChecks } from "./validate.ts";
 
 export interface BuildOptions {
   /** Use the best attempt (made safe) for flagged units instead of stopping. */
@@ -41,7 +41,11 @@ export class BuildBlockedError extends Error {
  * placeholders, adds missing required <xN/> at the end, removes duplicates.
  * Returns null when it can't be made safe (the source text is kept instead).
  */
-export function safeFallback(unit: TransUnit, text: string | null): string | null {
+export function safeFallback(
+  unit: TransUnit,
+  text: string | null,
+  languages?: LanguageChecks,
+): string | null {
   if (text === null || !text.trim()) return null;
   const byN = new Map(unit.placeholders.map((p) => [p.n, p]));
   const seenX = new Set<number>();
@@ -74,7 +78,7 @@ export function safeFallback(unit: TransUnit, text: string | null): string | nul
   for (const p of unit.placeholders) {
     if (p.kind === "x" && !seenX.has(p.n)) out += `<x${p.n}/>`;
   }
-  const check = checkUnitTranslation(unit, out, { targetScripts: [], ratio: 1 });
+  const check = checkUnitTranslation(unit, out, { targetScripts: [], ratio: 1, languages });
   return check.errors.length === 0 ? out : null;
 }
 
@@ -122,6 +126,7 @@ export async function buildBook(args: {
   let flagged = 0;
   let flaggedUsed = 0;
   let keptSource = 0;
+  const languages = languageChecks(args.sourceLang, args.targetLang);
   for (const r of results.values()) {
     for (const u of r.units) {
       const unit = allUnits.get(u.key);
@@ -132,7 +137,7 @@ export async function buildBook(args: {
       } else {
         flagged++;
         if (args.options.useBestAttempts) {
-          const safe = safeFallback(unit, u.text);
+          const safe = safeFallback(unit, u.text, languages);
           if (safe !== null) {
             translations.set(u.key, safe);
             flaggedUsed++;

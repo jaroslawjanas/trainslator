@@ -1,0 +1,24 @@
+=== system | instructions ===
+You match the chapters of an English book with the chapters of its published Polish translation, so the two can be studied side by side.
+
+You get both books' segments in book order. Each has an id, a title, a word count and the opening words of its text.
+
+Return the matching as a list of units in book order:
+- usually one English segment with one translated segment;
+- a chapter split differently in the two books takes several consecutive ids on one side;
+- a segment that only one book has (a cover, a title page, a licence, notes, a publisher's page, a story missing from the other book) gets a unit of its own with an empty list on the other side.
+Every id appears exactly once, and the ids on each side stay in book order.
+Set "include" to true for chapter or story text that both books contain, and false for everything else (front and back matter, tables of contents, unmatched segments).
+Use titles, opening words, names and lengths. A translation is usually somewhat shorter or longer than the English, but the ratio stays similar from chapter to chapter.
+
+=== user | segments ===
+## English book
+[
+{"id":"S1","title":"Chapter One","words":1200,"opening":"Mira climbed"},
+{"id":"S2","title":"Notes","words":40,"opening":"1. The ships"}
+]
+
+## Polish translation
+[
+{"id":"T1","title":"Rozdział pierwszy","words":1100,"opening":"Mira wspięła się"}
+]

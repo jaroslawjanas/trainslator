@@ -129,13 +129,15 @@ export function assembleKb(args: {
   style: StyleOutput | null;
   existing: Kb | null;
   overrides: KbOverrides;
+  /** The source language the names and terms are in. */
+  lang: string;
 }): Kb {
   const { resolution, existing, overrides } = args;
   const deleted = deletedKeys(overrides);
   const taken = new Set<string>(Object.keys(overrides.entries));
   const existingByKey = new Map<string, KbEntry>();
   for (const e of existing?.entries ?? [])
-    for (const k of entryKeys(e)) if (!existingByKey.has(k)) existingByKey.set(k, e);
+    for (const k of entryKeys(e, args.lang)) if (!existingByKey.has(k)) existingByKey.set(k, e);
 
   const drafts = resolution.entries.map((r) => {
     const all = [r.root, ...r.merged];
@@ -145,7 +147,7 @@ export function assembleKb(args: {
     for (const g of all) for (const s of Object.keys(g.sources)) spellings.add(s);
     for (const a of d?.aliases ?? []) spellings.add(a.trim());
     const aliases = [...spellings]
-      .filter((s) => s && normalizeKey(s) !== normalizeKey(source))
+      .filter((s) => s && normalizeKey(s, args.lang) !== normalizeKey(source, args.lang))
       .slice(0, 10);
     const target = d ? d.target : groupTarget(r.root);
     const targetsSeen = new Set<string>();
@@ -174,7 +176,7 @@ export function assembleKb(args: {
   const entries: KbEntry[] = [];
   const now = nowIso();
   for (const draft of drafts.sort((a, b) => a.source.localeCompare(b.source))) {
-    const keys = [draft.source, ...draft.aliases].map(normalizeKey);
+    const keys = [draft.source, ...draft.aliases].map((t) => normalizeKey(t, args.lang));
     if (keys.some((k) => deleted.has(k))) continue;
     const previous = keys.map((k) => existingByKey.get(k)).find((e) => e !== undefined);
     const id =
@@ -200,7 +202,7 @@ export function assembleKb(args: {
   }));
 
   const kb: Kb = { schemaVersion: 1, scope: args.scope, title: args.title, entries, styleRules };
-  const withOverrides = applyOverrides(kb, overrides);
+  const withOverrides = applyOverrides(kb, overrides, args.lang);
   // Groups that matched locked entries add their chapters to the entry's refs.
   for (const [entryId, groups] of resolution.intoLocked) {
     const e = withOverrides.entries.find((x) => x.id === entryId);

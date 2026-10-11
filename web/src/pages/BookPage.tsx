@@ -13,19 +13,19 @@ import { SetupPanel } from "./book/SetupPanel.tsx";
 import { TranslatePanel } from "./book/TranslatePanel.tsx";
 import type { BookDetail } from "./book/types.ts";
 import { KbEditor } from "./kb/KbEditor.tsx";
-import { useProject } from "./ProjectPage.tsx";
+import { useProject, useSourceName } from "./ProjectPage.tsx";
 
-const DESCRIPTIONS: Record<string, (target: string) => string> = {
+const DESCRIPTIONS: Record<string, (target: string, source: string) => string> = {
   setup: () =>
     "Which reference knowledge the AI gets, which chapters phase 2 reads, and which files are translated.",
   read: () =>
     "Phase 2. Before translating, the AI reads the book chapter by chapter. It writes a synopsis of each chapter and builds the book's knowledge base, with open questions where it can't decide yet.",
   kb: (target) =>
     `Names, terms and facts in this book, with their ${target} translations. What you edit is locked and kept when phases run again.`,
-  translate: () =>
-    "Phase 3. The AI translates the book in chunks or whole chapters, following both knowledge bases. Review it chapter by chapter: the English on the left page, the translation on the right.",
-  review: () =>
-    "Up to three versions side by side: the English, the current translation and saved ones. Edit any of them, rewrite a passage or part of it with a model, or copy a passage from one version to another. The current translation is the one that gets built.",
+  translate: (_, source) =>
+    `Phase 3. The AI translates the book in chunks or whole chapters, following both knowledge bases. Review it chapter by chapter: the ${source} on the left page, the translation on the right.`,
+  review: (_, source) =>
+    `Up to three versions side by side: the ${source}, the current translation and saved ones. Edit any of them, rewrite a passage or part of it with a model, or copy a passage from one version to another. The current translation is the one that gets built.`,
   build: () =>
     "Builds the translated EPUB from the original files. The translation replaces the text; styles, images, links and footnotes stay as they were.",
   history: () =>
@@ -35,6 +35,7 @@ const DESCRIPTIONS: Record<string, (target: string) => string> = {
 export function BookPage() {
   const { pid = "", bookId = "", stage } = useParams();
   const project = useProject(pid);
+  const source = useSourceName(pid);
   const { data, isLoading, error } = useQuery({
     queryKey: ["book", bookId],
     queryFn: () => get<BookDetail>(`/api/projects/${pid}/books/${bookId}`),
@@ -58,7 +59,7 @@ export function BookPage() {
       <PageHeader
         context={displayTitle(data.book.title)}
         title={def.label}
-        description={DESCRIPTIONS[def.key]?.(targetName)}
+        description={DESCRIPTIONS[def.key]?.(targetName, source)}
       />
       {def.key === "setup" && <SetupPanel pid={pid} detail={data} />}
       {def.key === "read" && <Phase2Panel pid={pid} detail={data} />}

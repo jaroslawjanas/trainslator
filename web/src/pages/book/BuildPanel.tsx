@@ -20,6 +20,7 @@ import { useJobs } from "../../components/JobsIndicator.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { RunPanel } from "../../components/RunPanel.tsx";
 import { formatDate, plural } from "../../lib/format.ts";
+import { useSourceName } from "../ProjectPage.tsx";
 import type { BookDetail } from "./types.ts";
 
 interface Report {
@@ -48,6 +49,7 @@ function Check({ ok, children }: { ok: boolean; children: React.ReactNode }) {
 }
 
 export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail }) {
+  const source = useSourceName(pid);
   const client = useQueryClient();
   const bookId = detail.book.id;
   const [useBest, setUseBest] = useState(false);
@@ -109,7 +111,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
         <Box mt="md" pl={22}>
           <Checkbox
             label="Use the best attempts for passages that still need attention"
-            description="Otherwise the build stops while any passage needs attention. Broken formatting is repaired, or the English is kept."
+            description={`Otherwise the build stops while any passage needs attention. Broken formatting is repaired, or the ${source} is kept.`}
             checked={useBest}
             onChange={(e) => setUseBest(e.currentTarget.checked)}
           />
@@ -137,7 +139,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
             <Check ok={r.untranslatedUnits === 0}>
               {r.untranslatedUnits === 0
                 ? "Every passage is translated."
-                : `${plural(r.untranslatedUnits, "passage")} left in English.`}
+                : `${plural(r.untranslatedUnits, "passage")} left in ${source}.`}
             </Check>
             {r.flaggedUsed > 0 && (
               <Check ok={false}>
@@ -146,7 +148,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
             )}
             {r.keptSource > 0 && (
               <Check ok={false}>
-                {plural(r.keptSource, "passage")} that needed attention kept in English.
+                {plural(r.keptSource, "passage")} that needed attention kept in {source}.
               </Check>
             )}
             {r.identifier && (

@@ -1,0 +1,36 @@
+## Characters
+- [p4] Mira → Mira (kept) [gender: female]
+- [p5] Pepper → Pieprz (also: the Cat)
+
+## Organizations, titles and named things
+- [p1] a Ship → statek
+- [p2] Gray Heron → Szara Czapla — a ship
+- [p3] An Owl → Sowa
+
+## Terms and recurring phrases
+- [p6] The storm → sztorm — forms: burza
+
+## Style rules
+1. Dialogue uses dashes.
+
+a Ship: refs ["a0"]
+An Owl: refs ["a1"]
+Gray Heron: refs ["a0","a1","s7"]
+Mira: refs ["a0"]
+The storm: refs ["a0","a1"]
+Pepper: refs ["s7"]
+
+add applied: added
+add applied: already listed as "Gray Heron"; filled in what was missing
+
+relevant 3/6
+### From "Earlier Book"
+## Characters
+- Mira → Mira (kept) [gender: female]
+- Pepper → Pieprz (also: the Cat)
+
+## Organizations, titles and named things
+- Gray Heron → Szara Czapla — a ship
+
+## Style rules
+1. Dialogue uses dashes.

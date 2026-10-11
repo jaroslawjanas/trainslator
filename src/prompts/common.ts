@@ -1,4 +1,20 @@
+import type { SourceLanguage } from "../languages/index.ts";
+import { primarySubtag } from "../shared/languages.ts";
+
 /** Shared prompt pieces. Everything static must render identically on every call. */
+
+/**
+ * English sources get exactly the prompts they always had; text added for
+ * other source languages is behind this check.
+ */
+export function isEnglish(source: SourceLanguage): boolean {
+  return primarySubtag(source.tag) === "en";
+}
+
+/** For inflected source languages: names and terms in their base form, not as the text inflects them. */
+export function baseFormRule(source: SourceLanguage): string {
+  return `Give names and terms in "source" in their ${source.name} base form, as a dictionary would list them (nominative singular, without an article), not in the form the text happens to use.`;
+}
 
 export function languageNotesBlock(targetName: string, notes: string): string {
   const trimmed = notes.trim();

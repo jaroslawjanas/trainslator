@@ -1,0 +1,28 @@
+g1 [term] The storm → sztorm ×1, burza ×1 (in 2 chapters)
+g2 [named_thing] Gray Heron → Szara Czapla ×2 (in 2 chapters)
+g3 [person] Mira → Mira ×1 (in 1 chapter)
+g4 [named_thing] An Owl → Sowa ×1 (in 1 chapter)
+g5 [named_thing] a Ship → statek ×1 (in 1 chapter)
+
+g1 [term] The storm → sztorm ×1, burza ×1 (in 2 chapters)
+  spellings: The storm, storm
+  treatment: translated
+  e.g. "The storm came" → "sztorm przyszedł"
+  e.g. "storm came" → "burza przyszedł"
+g2 [named_thing] Gray Heron → Szara Czapla ×2 (in 2 chapters)
+  spellings: the Gray Heron, Gray Heron
+  treatment: translated
+  e.g. "the Gray Heron came" → "Szara Czapla przyszedł"
+  e.g. "Gray Heron came" → "Szara Czapla przyszedł"
+g3 [person] Mira → Mira ×1 (in 1 chapter)
+  treatment: kept
+  gender: female
+  e.g. "Mira came" → "Mira przyszedł"
+g4 [named_thing] An Owl → Sowa ×1 (in 1 chapter)
+  treatment: translated
+  e.g. "An Owl came" → "Sowa przyszedł"
+g5 [named_thing] a Ship → statek ×1 (in 1 chapter)
+  treatment: translated
+  e.g. "a Ship came" → "statek przyszedł"
+
+{"rule":"The dialogue uses dashes.","count":2,"example":{"source":"a","target":"b"}}

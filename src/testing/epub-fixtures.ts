@@ -417,3 +417,54 @@ export function sampleNovel(version: "2.0" | "3.0" = "3.0"): Uint8Array {
     ],
   });
 }
+
+/**
+ * A small German book: front and back matter with German titles, names that
+ * change form ("des Ordens", "Annas", "zum Schwarzen Turm"), Sie and du, and
+ * German quotation marks.
+ */
+export function sampleGermanNovel(): Uint8Array {
+  return buildFixtureEpub({
+    language: "de",
+    title: "Der Schwarze Turm",
+    identifier: "urn:uuid:bbbbbbbb-1234-4234-8234-123456789abc",
+    docs: [
+      {
+        path: "text/inhalt.xhtml",
+        title: "Inhaltsverzeichnis",
+        body: `<h1>Inhaltsverzeichnis</h1>
+<p>Erstes Kapitel</p>
+<p>Zweites Kapitel</p>`,
+      },
+      {
+        path: "text/k1.xhtml",
+        title: "Erstes Kapitel",
+        body: `<h1>Erstes Kapitel</h1>
+<p>Anna wartete am Tor des Schwarzen Turms, bis die Ritter des Ordens zurückkehrten.</p>
+<p>„Kommen Sie herein“, sagte der Kapitän zu ihr, „der Orden erwartet Sie schon.“</p>
+<p>Annas Bruder Jonas stand hinter ihm und schwieg.</p>
+<p>Seit dem Winter war niemand mehr zum Schwarzen Turm hinaufgestiegen.</p>`,
+      },
+      {
+        path: "text/k2.xhtml",
+        title: "Zweites Kapitel",
+        body: `<h1>Zweites Kapitel</h1>
+<p>„Du hast es also gefunden“, flüsterte Jonas, als sie allein waren.</p>
+<p>Anna nickte und zeigte ihm das Siegel des Ordens.</p>
+<p>Der Kapitän durfte davon nichts erfahren.</p>`,
+      },
+      {
+        path: "text/dank.xhtml",
+        title: "Danksagung",
+        body: `<h1>Danksagung</h1>
+<p>Ich danke allen, die dieses Buch möglich gemacht haben.</p>`,
+      },
+    ],
+    toc: [
+      { title: "Inhaltsverzeichnis", href: "text/inhalt.xhtml" },
+      { title: "Erstes Kapitel", href: "text/k1.xhtml" },
+      { title: "Zweites Kapitel", href: "text/k2.xhtml" },
+      { title: "Danksagung", href: "text/dank.xhtml" },
+    ],
+  });
+}

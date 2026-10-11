@@ -1,4 +1,5 @@
-import { countWords } from "../shared/languages.ts";
+import { countWords, languageDisplayName, primarySubtag } from "../shared/languages.ts";
+import type { Diagnostic } from "../shared/schemas/common.ts";
 import type { EpubStructure } from "../shared/schemas/epub.ts";
 import type { EpubBook } from "./book.ts";
 import { buildSegments } from "./segments.ts";
@@ -40,6 +41,21 @@ export function computeStructure(book: EpubBook, lang: string): EpubStructure {
     maxDepth: segments.maxDepth,
     segmentsByDepth: segments.segmentsByDepth,
     totalWords: docs.filter((d) => d.inSpine).reduce((s, d) => s + d.words, 0),
-    diagnostics: [...book.diagnose(), ...segments.diagnostics],
+    diagnostics: [...book.diagnose(), ...segments.diagnostics, ...languageMismatch(book, lang)],
   };
+}
+
+/** The book says it's in another language than the one it's imported as. */
+function languageMismatch(book: EpubBook, lang: string): Diagnostic[] {
+  const declared = book.pkg.languages[0];
+  if (!declared || primarySubtag(declared) === primarySubtag(lang)) return [];
+  return [
+    {
+      level: "warning",
+      code: "language-mismatch",
+      message: `The book's details say it's in ${languageDisplayName(declared)}, but it's used here as ${languageDisplayName(lang)}. Check that you chose the right file.`,
+      docIndex: null,
+      count: 1,
+    },
+  ];
 }

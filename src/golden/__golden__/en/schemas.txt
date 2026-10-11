@@ -1,0 +1,1010 @@
+=== ReadOutput ===
+{
+  "type": "object",
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "place",
+              "organization",
+              "named_thing",
+              "term",
+              "phrase",
+              "wordplay",
+              "other"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "the name or term as written in English"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the translator's rendering in its dictionary form (nominative, base form)"
+          },
+          "targetSeen": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "other forms of the rendering seen in this chapter (inflections, variants)"
+          },
+          "treatment": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "kept",
+                  "translated",
+                  "transliterated",
+                  "adapted",
+                  "omitted",
+                  "other"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "attributes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "additionalProperties": false
+            },
+            "description": "facts that matter for the translation, e.g. gender, address"
+          },
+          "note": {
+            "type": "string",
+            "description": "why it matters / what the translator did, in English"
+          },
+          "sourceQuote": {
+            "type": "string",
+            "description": "a short English quote, at most 25 words"
+          },
+          "targetQuote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "the matching translated quote, at most 25 words"
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "target",
+          "targetSeen",
+          "treatment",
+          "attributes",
+          "note",
+          "sourceQuote",
+          "targetQuote"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "styleNotes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string",
+            "description": "a general convention of this translator, in English"
+          },
+          "sourceQuote": {
+            "type": "string"
+          },
+          "targetQuote": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule",
+          "sourceQuote",
+          "targetQuote"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "findings",
+    "styleNotes"
+  ],
+  "additionalProperties": false
+}
+
+=== MergeOutput ===
+{
+  "type": "object",
+  "properties": {
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "entry",
+              "merge_into",
+              "drop"
+            ]
+          },
+          "into": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for merge_into: the group (gN) or existing entry (pN) it belongs to"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "entry": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "person",
+                      "place",
+                      "organization",
+                      "named_thing",
+                      "term",
+                      "phrase",
+                      "wordplay",
+                      "other"
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "aliases": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "treatment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "kept",
+                          "translated",
+                          "transliterated",
+                          "adapted",
+                          "omitted",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attributes": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "value": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "value"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "note": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source",
+                  "aliases",
+                  "target",
+                  "treatment",
+                  "attributes",
+                  "note"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for \"entry\": the final entry, or null to build it from the group as listed"
+          }
+        },
+        "required": [
+          "group",
+          "action",
+          "into",
+          "reason",
+          "entry"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "decisions"
+  ],
+  "additionalProperties": false
+}
+
+=== StyleOutput ===
+{
+  "type": "object",
+  "properties": {
+    "rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": "string"
+          },
+          "sourceExample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetExample": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "rule",
+          "sourceExample",
+          "targetExample"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "rules"
+  ],
+  "additionalProperties": false
+}
+
+=== ChapterOutput ===
+{
+  "type": "object",
+  "properties": {
+    "synopsis": {
+      "type": "string"
+    },
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "update",
+              "resolve",
+              "remove"
+            ]
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for update/resolve/remove: the entry's id, e.g. p12"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "place",
+                          "organization",
+                          "named_thing",
+                          "term",
+                          "phrase",
+                          "wordplay",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "aliases": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "added to the existing aliases"
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "proposed translation, dictionary form"
+                  },
+                  "treatment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "kept",
+                          "translated",
+                          "transliterated",
+                          "adapted",
+                          "omitted",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attributes": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "matched by key; e.g. gender, address"
+                  },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "open"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "\"open\" = undecided, needs a question"
+                  },
+                  "question": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "for open entries: what still needs deciding"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source",
+                  "aliases",
+                  "target",
+                  "treatment",
+                  "attributes",
+                  "note",
+                  "status",
+                  "question"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for add/update/resolve: only what changes; null = keep"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id",
+          "fields",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "synopsis",
+    "edits"
+  ],
+  "additionalProperties": false
+}
+
+=== ReviewOutput ===
+{
+  "type": "object",
+  "properties": {
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "update",
+              "resolve",
+              "remove"
+            ]
+          },
+          "id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for update/resolve/remove: the entry's id, e.g. p12"
+          },
+          "fields": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "person",
+                          "place",
+                          "organization",
+                          "named_thing",
+                          "term",
+                          "phrase",
+                          "wordplay",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "aliases": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "added to the existing aliases"
+                  },
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "proposed translation, dictionary form"
+                  },
+                  "treatment": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "kept",
+                          "translated",
+                          "transliterated",
+                          "adapted",
+                          "omitted",
+                          "other"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "attributes": {
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "key": {
+                              "type": "string"
+                            },
+                            "value": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "value"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "matched by key; e.g. gender, address"
+                  },
+                  "note": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "enum": [
+                          "auto",
+                          "open"
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "\"open\" = undecided, needs a question"
+                  },
+                  "question": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "for open entries: what still needs deciding"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "source",
+                  "aliases",
+                  "target",
+                  "treatment",
+                  "attributes",
+                  "note",
+                  "status",
+                  "question"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "for add/update/resolve: only what changes; null = keep"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "op",
+          "id",
+          "fields",
+          "reason"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "edits"
+  ],
+  "additionalProperties": false
+}
+
+=== AlignOutput ===
+{
+  "type": "object",
+  "properties": {
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ids of English segments (S…), or an empty list"
+          },
+          "target": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ids of translated segments (T…), or an empty list"
+          },
+          "include": {
+            "type": "boolean",
+            "description": "true for chapter or story text that both books contain, otherwise false"
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "include"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "units"
+  ],
+  "additionalProperties": false
+}
+
+=== LanguageNotesOutput ===
+{
+  "type": "object",
+  "properties": {
+    "markdown": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "markdown"
+  ],
+  "additionalProperties": false
+}
+
+=== Phase3Output ===
+{
+  "type": "object",
+  "properties": {
+    "units": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "coined": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "person",
+              "place",
+              "organization",
+              "named_thing",
+              "term",
+              "phrase",
+              "wordplay",
+              "other"
+            ]
+          },
+          "source": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "source",
+          "target",
+          "note"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "units",
+    "coined"
+  ],
+  "additionalProperties": false
+}
+
+=== TocOutput ===
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false
+}
+
+=== RewriteOutput ===
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "additionalProperties": false
+}
+
+=== KbAnswer ===
+{
+  "type": "object",
+  "properties": {
+    "target": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "treatment": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "kept",
+            "translated",
+            "transliterated",
+            "adapted",
+            "omitted",
+            "other"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "attributes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "value"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "note": {
+      "type": "string"
+    },
+    "explanation": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "target",
+    "treatment",
+    "attributes",
+    "note",
+    "explanation"
+  ],
+  "additionalProperties": false
+}

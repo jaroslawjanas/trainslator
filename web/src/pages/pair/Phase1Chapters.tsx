@@ -9,6 +9,7 @@ import { StageMark } from "../../components/StageMark.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { KIND_TEXT } from "../kb/KbEditor.tsx";
+import { useSourceName } from "../ProjectPage.tsx";
 
 /** What one chapter read found (the phase 1 read output, as saved). */
 interface Finding {
@@ -50,6 +51,7 @@ function FindingsDrawer({
   chapter: ChapterRow | null;
   onClose: () => void;
 }) {
+  const source = useSourceName(pid);
   const { data, isLoading } = useQuery({
     queryKey: ["pair", pairId, "phase1-chapter", chapter?.position],
     queryFn: () =>
@@ -87,7 +89,7 @@ function FindingsDrawer({
                 <Table verticalSpacing={8}>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th w="26%">English</Table.Th>
+                      <Table.Th w="26%">{source}</Table.Th>
                       <Table.Th w="26%">Translation</Table.Th>
                       <Table.Th>Note and quotes</Table.Th>
                     </Table.Tr>
@@ -178,6 +180,7 @@ export function Phase1Chapters({
   pairId: string;
   job: Job | undefined;
 }) {
+  const source = useSourceName(pid);
   const running = job !== undefined && ACTIVE_JOB.includes(job.status);
   const chapters = useQuery({
     queryKey: ["pair", pairId, "phase1-chapters"],
@@ -212,7 +215,7 @@ export function Phase1Chapters({
           <Table highlightOnHover verticalSpacing={8}>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>English</Table.Th>
+                <Table.Th>{source}</Table.Th>
                 <Table.Th>Translation</Table.Th>
                 <Table.Th w={150}>Status</Table.Th>
                 <Table.Th w={110} ta="right">

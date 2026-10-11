@@ -1,7 +1,14 @@
 import { z } from "zod";
+import type { SourceLanguage } from "../languages/index.ts";
 import type { PromptBlock } from "../llm/request.ts";
 import { KbKind, KbTreatment, KeyValue } from "../shared/schemas/kb.ts";
-import { bookKbBlock, languageNotesBlock, referenceKbBlock } from "./common.ts";
+import {
+  baseFormRule,
+  bookKbBlock,
+  isEnglish,
+  languageNotesBlock,
+  referenceKbBlock,
+} from "./common.ts";
 
 export const PHASE2_PROMPT_VERSION = 2;
 
@@ -35,14 +42,18 @@ export type ChapterOutput = z.infer<typeof ChapterOutput>;
 export const ReviewOutput = z.object({ edits: z.array(Edit) });
 export type ReviewOutput = z.infer<typeof ReviewOutput>;
 
-export function phase2System(targetName: string, languageNotes: string): string {
-  return `You prepare a knowledge base for translating an English novel into ${targetName}. You read the whole book chapter by chapter before any translating starts, so the translator knows names, terms and facts in advance.
+export function phase2System(
+  source: SourceLanguage,
+  targetName: string,
+  languageNotes: string,
+): string {
+  return `You prepare a knowledge base for translating ${source.article} ${source.name} novel into ${targetName}. You read the whole book chapter by chapter before any translating starts, so the translator knows names, terms and facts in advance.
 
 For each chapter:
 1. Write a synopsis in English (at most 120 words): who appears, what happens, and anything that matters for translation later (genders, relationships, who speaks formally to whom, double meanings).
 2. Return edits to the knowledge base:
    - Check the open questions first. If this chapter answers one, "resolve" it (give the decided translation and facts).
-   - "add" what a translator could otherwise get wrong or render inconsistently from chapter to chapter: names (people, places, organizations, ships, books, other named things), characters known by a description who appear more than once (with facts such as gender), titles and forms of address, invented or archaic terms, recurring phrases and wordplay. Propose a translation into ${targetName} in its dictionary form, consistent with the knowledge from earlier human translations: if they kept a name, keep it; if they translated a term, use their translation.
+   - "add" what a translator could otherwise get wrong or render inconsistently from chapter to chapter: names (people, places, organizations, ships, books, other named things), characters known by a description who appear more than once (with facts such as gender), titles and forms of address, invented or archaic terms, recurring phrases and wordplay. Propose a translation into ${targetName} in its dictionary form, consistent with the knowledge from earlier human translations: if they kept a name, keep it; if they translated a term, use their translation.${isEnglish(source) ? "" : ` ${baseFormRule(source)}`}
    - Don't add one-off mentions, ordinary objects, animals or professions, or anything a dictionary translates the same way in any context. A focused list of what matters is more useful than a long one.
    - When something can't be decided yet (for example a character's gender hasn't been revealed and ${targetName} needs it), add the entry with status "open" and a short question instead of guessing.
    - "update" entries that this chapter adds facts to or contradicts. Give only the fields that change; null keeps a field.
@@ -52,6 +63,7 @@ For each chapter:
 }
 
 export function chapterBlocks(input: {
+  source: SourceLanguage;
   targetName: string;
   languageNotes: string;
   referenceKb: string | null;
@@ -65,7 +77,7 @@ export function chapterBlocks(input: {
     {
       role: "system",
       label: "instructions",
-      text: phase2System(input.targetName, input.languageNotes),
+      text: phase2System(input.source, input.targetName, input.languageNotes),
       cacheBreakpoint: !input.referenceKb,
     },
   ];
@@ -98,6 +110,7 @@ export function chapterBlocks(input: {
 }
 
 export function reviewBlocks(input: {
+  source: SourceLanguage;
   targetName: string;
   languageNotes: string;
   referenceKb: string | null;
@@ -109,7 +122,7 @@ export function reviewBlocks(input: {
     {
       role: "system",
       label: "instructions",
-      text: `You review a knowledge base prepared for translating an English novel into ${input.targetName}, now that the whole book has been read. Fix it with edits:
+      text: `You review a knowledge base prepared for translating ${input.source.article} ${input.source.name} novel into ${input.targetName}, now that the whole book has been read. Fix it with edits:
 - merge duplicates (remove one, add its spellings as aliases of the other);
 - make translations of related names and terms consistent;
 - resolve open questions that the synopses answer; leave the rest open;

@@ -1,5 +1,7 @@
 import { z } from "zod";
+import type { SourceLanguage } from "../languages/index.ts";
 import type { PromptBlock } from "../llm/request.ts";
+import { isEnglish } from "./common.ts";
 
 export const LANGUAGE_NOTES_VERSION = 1;
 
@@ -8,10 +10,16 @@ export const LanguageNotesOutput = z.object({
 });
 
 export function languageNotesBlocks(
-  sourceName: string,
+  source: SourceLanguage,
   targetName: string,
   targetTag: string,
 ): PromptBlock[] {
+  const sourceName = source.name;
+  // Sources other than English bring their own traps (English keeps its exact prompt).
+  const sourceTraps = isEnglish(source)
+    ? ""
+    : `
+- what ${sourceName} expresses differently and how to carry it into ${targetName}: forms of address (for example formal and informal "you"), inflected and diminutive forms of names, long compound words, and what ${sourceName} leaves unsaid that ${targetName} must decide;`;
   return [
     {
       role: "system",
@@ -28,7 +36,7 @@ export function languageNotesBlocks(
 - how foreign names are written, adapted, transliterated or inflected;
 - name order and writing system;
 - quotation and dialogue punctuation, spacing rules, number and date formats;
-- anything else a translator commonly gets wrong for this language.
+- anything else a translator commonly gets wrong for this language.${sourceTraps}
 End with a section "Attributes to record" listing the attribute keys (in English, lowercase, e.g. gender, address, honorific) that a knowledge base should store for names and terms in ${targetName}.
 Return JSON: {"markdown": "..."}.`,
     },

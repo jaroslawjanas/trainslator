@@ -75,6 +75,11 @@ export function relativeTime(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
+/** "An English", "A German": a language name with its article, to start a sentence. */
+export function withArticle(name: string): string {
+  return `${/^[AEIOU]/.test(name) ? "An" : "A"} ${name}`;
+}
+
 /** Joins items into an English list: "a, b and c". */
 export function listText(items: string[]): string {
   if (items.length <= 1) return items.join("");

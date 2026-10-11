@@ -16,28 +16,37 @@ import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
+import { languageDisplayName } from "../../../src/shared/languages.ts";
 import { get, post } from "../api/client.ts";
 import type { Project, ProjectSummary } from "../api/types.ts";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { listText, plural, relativeTime } from "../lib/format.ts";
+
+/** Primary language subtag: "pt-BR" → "pt". */
+const primary = (tag: string) => tag.split("-")[0]!.toLowerCase();
 
 function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const navigate = useNavigate();
   const client = useQueryClient();
   const languages = useQuery({
     queryKey: ["languages"],
-    queryFn: () => get<{ languages: { tag: string; name: string }[] }>("/api/projects/languages"),
+    queryFn: () =>
+      get<{
+        languages: { tag: string; name: string }[];
+        sources: { tag: string; name: string }[];
+      }>("/api/projects/languages"),
   });
   const [name, setName] = useState("");
+  const [source, setSource] = useState("en");
   const [target, setTarget] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [saving, setSaving] = useState(false);
 
   const options = useMemo(() => {
-    const list = (languages.data?.languages ?? []).map((l) => ({
-      value: l.tag,
-      label: `${l.name} (${l.tag})`,
-    }));
+    // The source language can't also be the target.
+    const list = (languages.data?.languages ?? [])
+      .filter((l) => primary(l.tag) !== primary(source))
+      .map((l) => ({ value: l.tag, label: `${l.name} (${l.tag})` }));
     const typed = search.trim();
     // Any BCP-47 code can be typed in, even if it's not in the list.
     if (
@@ -48,13 +57,17 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
       list.unshift({ value: typed, label: `Use code "${typed}"` });
     }
     return list;
-  }, [languages.data, search]);
+  }, [languages.data, search, source]);
+  const sources = (languages.data?.sources ?? [{ tag: "en", name: "English" }]).map((l) => ({
+    value: l.tag,
+    label: l.name,
+  }));
 
   return (
     <Modal opened={opened} onClose={onClose} title="New project">
       <Stack>
         <Text size="sm" c="dimmed">
-          A project translates books from English into one language. You add reference pairs and
+          A project translates books from one language into another. You add reference pairs and
           books inside it.
         </Text>
         <TextInput
@@ -65,8 +78,19 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
           data-autofocus
         />
         <Select
+          label="Translate from"
+          description="The language of the books, and of the originals in your reference pairs."
+          data={sources}
+          value={source}
+          allowDeselect={false}
+          onChange={(v) => {
+            if (!v) return;
+            setSource(v);
+            if (target && primary(target) === primary(v)) setTarget(null);
+          }}
+        />
+        <Select
           label="Translate into"
-          description="The books are translated from English, the only source language for now."
           placeholder="Search, or type a language code"
           searchable
           data={options}
@@ -88,6 +112,7 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
               try {
                 const res = await post<{ project: Project }>("/api/projects", {
                   name,
+                  sourceLang: source,
                   targetLang: target,
                 });
                 await client.invalidateQueries({ queryKey: ["projects"] });
@@ -129,11 +154,11 @@ function FirstSteps({ onCreate }: { onCreate: () => void }) {
           <Anchor component="button" onClick={onCreate}>
             Create a project
           </Anchor>{" "}
-          for the language you translate into.
+          for the languages you translate from and into.
         </List.Item>
         <List.Item>
-          Add reference pairs (an English book with its published translation), then the book you
-          want translated.
+          Add reference pairs (a book with its published translation), then the book you want
+          translated.
         </List.Item>
       </List>
     </Box>
@@ -150,7 +175,7 @@ export function ProjectsPage() {
     <>
       <PageHeader
         title="Projects"
-        description="Each project translates books from English into one language, learning from the reference pairs you give it."
+        description="Each project translates books from one language into another, learning from the reference pairs you give it."
         actions={<Button onClick={() => setOpen(true)}>New project</Button>}
       />
       {isLoading && <Loader size="sm" />}
@@ -172,7 +197,7 @@ export function ProjectsPage() {
                   </Text>
                 </Group>
                 <Text size="sm" c="dimmed" mt={4}>
-                  English into {p.targetLangName}.{" "}
+                  {languageDisplayName(p.sourceLang)} into {p.targetLangName}.{" "}
                   {contents.length > 0 ? `${listText(contents)}.` : "Nothing added yet."}
                 </Text>
               </Link>

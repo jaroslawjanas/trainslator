@@ -1,6 +1,7 @@
 import { EpubBook } from "../epub/book.ts";
 import { computeStructure } from "../epub/structure.ts";
 import { renderRangesMarkdown } from "../epub/text.ts";
+import { sourceLanguage } from "../languages/index.ts";
 import { callStructured } from "../llm/call.ts";
 import {
   aiAlignmentProblems,
@@ -9,7 +10,7 @@ import {
   fromAiAlignment,
   proposeAlignment,
 } from "../pipeline/alignment.ts";
-import { AlignOutput, alignBlocks } from "../prompts/alignment.ts";
+import { alignBlocks, alignOutputFor } from "../prompts/alignment.ts";
 import type { AppContext } from "../server/context.ts";
 import { Alignment } from "../shared/schemas/alignment.ts";
 import { newId, nowIso } from "../shared/schemas/common.ts";
@@ -51,7 +52,7 @@ export async function loadAlignment(
   return a;
 }
 
-/** Imports an English book and its human translation, computes structures and a first alignment. */
+/** Imports a book and its human translation, computes structures and a first alignment. */
 export async function importPair(
   app: AppContext,
   pid: string,
@@ -66,7 +67,7 @@ export async function importPair(
   const sourceStructure = computeStructure(source, project.sourceLang);
   const targetStructure = computeStructure(target, project.targetLang);
   if (sourceStructure.totalWords === 0)
-    throw new UserError("The English book seems to have no text.");
+    throw new UserError("The original book seems to have no text.");
   if (targetStructure.totalWords === 0)
     throw new UserError("The translated book seems to have no text.");
 
@@ -88,6 +89,7 @@ export async function importPair(
     segmentsAt(sourceStructure, depths.source),
     segmentsAt(targetStructure, depths.target),
     depths,
+    { languages: { source: project.sourceLang, target: project.targetLang } },
   );
   await writeJson(app.paths.alignment(pid, pair.id), Alignment, alignment);
   await app.projects.savePair(pid, pair);
@@ -145,12 +147,14 @@ export async function reproposeAlignment(
   pairId: string,
   depths: { source: number; target: number },
 ): Promise<Alignment> {
+  const project = await app.projects.get(pid);
   const source = await loadStructure(app, pid, pairId, "source");
   const target = await loadStructure(app, pid, pairId, "target");
   const alignment = proposeAlignment(
     segmentsAt(source, depths.source),
     segmentsAt(target, depths.target),
     depths,
+    { languages: { source: project.sourceLang, target: project.targetLang } },
   );
   return writeJson(app.paths.alignment(pid, pairId), Alignment, alignment);
 }
@@ -171,8 +175,8 @@ export async function aiProposeAlignment(
     projectId: pid,
     step: "utility",
     label: "alignment proposal",
-    blocks: alignBlocks(project.targetLangName, source, target),
-    schema: AlignOutput,
+    blocks: alignBlocks(sourceLanguage(project.sourceLang), project.targetLangName, source, target),
+    schema: alignOutputFor(sourceLanguage(project.sourceLang)),
     schemaName: "alignment",
     answerBudget: 400 + (source.length + target.length) * 25,
     validate: (v) => aiAlignmentProblems(v.units, source.length, target.length),
