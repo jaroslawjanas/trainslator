@@ -91,8 +91,8 @@ Open http://localhost:5173. Then:
    few small requests and suggests settings that work with that provider.
 2. **Settings → Models for each step:** choose a model for each step. A fast model is fine for
    phase 1, a medium one for phase 2, and the strongest you can afford for phase 3.
-3. **Projects:** create a project with the target language. Draft the language notes with AI
-   and adjust them; they go into every request.
+3. **Projects:** create a project with its source and target languages. Draft the language notes
+   with AI and adjust them; they go into every request.
 4. Add reference pairs, then the book. The sidebar lists each book's stages (setup, reading,
    knowledge base, translation, review, build, history) and marks the ones that are done.
 
@@ -194,6 +194,7 @@ Each source language is a JSON file in `src/languages/` (`en.json`, `de.json`, `
 against `language.schema.json`, so an editor completes and validates the fields. To add one:
 
 1. Copy `de.json` to a file named after the language tag, for example `cs.json`, and fill it in:
+   - `tag`: the language tag, `cs`;
    - `article`: "a" or "an", as in "a Czech novel";
    - `keyArticles`: articles to ignore when matching names (none for Czech);
    - `endings` and `alternations`: case endings and stem changes, so names are found in any form;
@@ -201,7 +202,10 @@ against `language.schema.json`, so an editor completes and validates the fields.
    - `numberWords` and `ordinals`: for matching "Chapter One" with "Kapitola první";
    - `commonWords`: frequent short words, used to notice text left untranslated;
    - `preambles`: phrases a model may put before a translation into this language.
-2. Import the file in `src/languages/index.ts` and add its tag to `SOURCE_LANGUAGES`.
-3. Run `pnpm check`. The tests check every file against the schema.
+2. Import the file in `src/languages/index.ts`, add it to the list of files there, and add its tag
+   to `SOURCE_LANGUAGES`.
+3. Add the tag to the language lists the tests expect in `src/languages/index.test.ts`, then run
+   `pnpm check`. A file that doesn't match the schema stops the server at startup and fails the
+   tests.
 
 A language without a file can still be a target; a file only adds checks for it there.

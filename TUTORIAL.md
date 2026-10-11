@@ -45,10 +45,10 @@ same, in three phases, and keeps those notes in **knowledge bases** you can read
 ```mermaid
 flowchart LR
   subgraph pairs["Reference pairs (optional, phase 1)"]
-    A["English book +<br/>its translation"] --> B["Alignment"] --> C["Learning"] --> D[("Pair<br/>knowledge base")]
+    A["Book +<br/>its translation"] --> B["Alignment"] --> C["Learning"] --> D[("Pair<br/>knowledge base")]
   end
   subgraph book["Your book (phases 2 and 3)"]
-    E["English book"] --> F["Setup"] --> G["Reading"] --> H[("Book<br/>knowledge base")] --> I["Translation"] --> J["Review"] --> K["Build:<br/>translated EPUB"]
+    E["Book to translate"] --> F["Setup"] --> G["Reading"] --> H[("Book<br/>knowledge base")] --> I["Translation"] --> J["Review"] --> K["Build:<br/>translated EPUB"]
   end
   D -. "used in every request" .-> G
   D -. "used in every request" .-> I
@@ -61,13 +61,13 @@ you can compare and restore.
 
 ### The three phases
 
-1. **Phase 1: Learning from reference pairs.** You give the app an English book together with its
+1. **Phase 1: Learning from reference pairs.** You give the app a book together with its
    published human translation. You confirm which chapters correspond, and the AI reads each
    chapter pair, noting the translator's decisions: how names were rendered, what invented words
    became, how wordplay was solved, which forms of address were used, and general style. The
    findings are merged into the pair's knowledge base. Ordinary dictionary words are left out on
    purpose.
-2. **Phase 2: Reading your book.** Before anything is translated, the AI reads your English book
+2. **Phase 2: Reading your book.** Before anything is translated, the AI reads your book
    chapter by chapter, in order. For each chapter it writes a short synopsis and updates the
    book's knowledge base, staying consistent with the reference pairs. Anything it can't decide
    yet (is *Sam* a man or a woman?) becomes an **open question** that a later chapter, or you, can
@@ -75,7 +75,11 @@ you can compare and restore.
 3. **Phase 3: Translating.** The AI translates the book in chunks or whole chapters, with the
    instructions, your language notes and both knowledge bases in every request. Formatting
    travels as placeholders and every answer is checked. You then review the result, side by side
-   with the English and with earlier versions, and build the EPUB.
+   with the original and with earlier versions, and build the EPUB.
+
+Books can be translated from English, German or Polish into any language. This guide's examples
+translate an English book into Polish; with another source, the app names that language wherever
+the guide says English (see [section 6](#6-projects-and-language-notes)).
 
 ### Words used in this guide and in the app
 
@@ -110,7 +114,8 @@ The short path from nothing to a translated EPUB. Every step links to its full d
 4. **Choose a model for each step:** **Settings → Models for each step**. Fast models for phase 1,
    mid-range for phase 2, your strongest for phase 3. Press **Save**. See
    [section 5](#5-choosing-models-for-each-step).
-5. **Create a project:** **New project**, give it a name and the language to translate into. See
+5. **Create a project:** **New project**, give it a name, the language to translate from and the
+   one to translate into. See
    [section 6](#6-projects-and-language-notes).
 6. **Write the language notes:** **Language notes** in the sidebar, **Draft with AI**, then read
    and correct them.
@@ -118,7 +123,7 @@ The short path from nothing to a translated EPUB. Every step links to its full d
    **Confirm alignment**, then **Learn from this pair**. Look through its knowledge base. See
    [section 7](#7-reference-pairs-alignment-and-learning-phase-1).
 8. **Add your book and set it up:** **Add book**; on **Setup** choose the reference pairs, the
-   chapters phase 2 should read and any files to keep in English. See
+   chapters phase 2 should read and any files to keep in the original language. See
    [section 9](#9-adding-a-book-and-setting-it-up).
 9. **Let the AI read the book:** **Reading → Read the book**. Then open **Knowledge base**, answer
    the open questions and correct anything important. See [section 10](#10-reading-the-book-phase-2).
@@ -473,6 +478,8 @@ into **every request** of every phase, so they shape everything.
 ### Project settings
 
 - **Name**: **Rename** the project.
+- **Languages**: the source and target languages, set when the project was created. To translate
+  between other languages, create a new project.
 - **Review**: **Pause for review after each phase**. In the current version every phase starts
   only when you press its button, so you always get the chance to review in between.
 - **Saved AI answers**: answers that passed the checks are kept and reused when exactly the same
@@ -501,7 +508,8 @@ On the project page, press **Add reference pair** and choose the **English origi
 Books and their translations don't always have the same chapters: a translation may lack the
 acknowledgements, add a translator's note, merge two short chapters, or split a long one. The
 alignment table pairs them up. The app proposes an alignment by itself, based on chapter lengths,
-titles and numbers; you check it, fix it and confirm it.
+titles and numbers (digits, Roman numerals, or words such as *Chapter One*, *Rozdział pierwszy* and
+*Erstes Kapitel*); you check it, fix it and confirm it.
 
 - **English chapters** and **Translated chapters** choose how deep in each table of contents the
   chapters are taken from: **Top level**, or **Down to level 2** and so on. Use a deeper level
@@ -705,7 +713,7 @@ above the list.
 ### Files to translate
 
 Every file is translated unless you switch on **Keep original**, for example for an index or an
-English-only appendix. The list shows each file's words, whether it's outside the reading order or
+appendix that stays in the original language. The list shows each file's words, whether it's outside the reading order or
 a navigation file, and how many paragraphs have broken markup. Those paragraphs stay
 untranslated, because their text can't be put back safely.
 
@@ -719,7 +727,7 @@ Changes to chapters and files show a bar with **Save setup** and **Undo**.
   (see [section 13](#13-building-the-epub)).
 
 **Notes about the files** lists anything unusual in the EPUB, such as text inside images or SVG
-that will stay in English. **Delete book** removes the book with its knowledge base, translations
+that will stay untranslated. **Delete book** removes the book with its knowledge base, translations
 and builds; reference pairs are kept.
 
 ---
@@ -1023,8 +1031,8 @@ Saved translations can be edited too; edits to them change that saved copy.
 
 Press **Ctrl+F** (or the **Search** button) to open the search panel on the right.
 
-- Type at least 2 letters. By default case and accents don't matter, so *zrodlo* finds *Źródło*
-  and *lodz* finds *Łódź*. Tick **Match case and accents** for an exact search, and **Whole words**
+- Type at least 2 letters. By default case and accents don't matter, so *zrodlo* finds *Źródło*,
+  *lodz* finds *Łódź* and *strasse* finds *Straße*. Tick **Match case and accents** for an exact search, and **Whole words**
   to skip matches inside longer words.
 - **This chapter** or **Whole book** sets where to look.
 - One checkbox per open column chooses which versions are searched; all are ticked by default.
