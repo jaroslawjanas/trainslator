@@ -1,19 +1,23 @@
 import { stripPlaceholders } from "../epub/blocks.ts";
-import { loadResults } from "../pipeline/phase3.ts";
+import { entryKeys, normalizeKey } from "../kb/model.ts";
+import { loadResults, normalizeTerm } from "../pipeline/phase3.ts";
 import { checkUnitTranslation, languageChecks } from "../pipeline/validate.ts";
 import type { AppContext } from "../server/context.ts";
 import { unicodeScriptsFor } from "../shared/languages.ts";
 import { nowIso } from "../shared/schemas/common.ts";
+import type { Kb, KbEntry } from "../shared/schemas/kb.ts";
 import {
   ChunkResult,
   DocUnits,
   Glossary,
+  type GlossaryTerm,
   ManualEdits,
   Phase3Plan,
   TocTranslations,
   type TransUnit,
 } from "../shared/schemas/translation.ts";
 import { listDir, readJson, updateJson, writeJson } from "../store/json.ts";
+import { addEntry, loadKb } from "./kb.ts";
 import { NotFoundError, UserError } from "./projects.ts";
 
 /** Unit keys contain dots; URLs use underscores instead. */
@@ -235,13 +239,113 @@ export async function acceptUnit(
   );
 }
 
-export async function glossary(app: AppContext, pid: string, bookId: string) {
+async function loadGlossary(app: AppContext, pid: string, bookId: string): Promise<Glossary> {
   return (
     (await readJson(app.paths.phase3Glossary(pid, bookId), Glossary).catch(() => undefined)) ?? {
       schemaVersion: 1,
       terms: [],
     }
   );
+}
+
+/** The coined terms, each with the book's knowledge base entry it matches, if any. */
+export async function glossary(app: AppContext, pid: string, bookId: string) {
+  const file = await loadGlossary(app, pid, bookId);
+  const { kb } = await loadKb(app, { kind: "book", pid, id: bookId });
+  const lang = (await app.projects.get(pid)).sourceLang;
+  const byKey = new Map<string, KbEntry>();
+  for (const e of kb.entries)
+    for (const k of entryKeys(e, lang)) if (!byKey.has(k)) byKey.set(k, e);
+  return {
+    ...file,
+    terms: file.terms.map((t) => {
+      const e = byKey.get(normalizeKey(t.source, lang));
+      return { ...t, inKb: e ? { id: e.id, target: e.target } : null };
+    }),
+  };
+}
+
+export type CoinedFields = Pick<GlossaryTerm, "kind" | "source" | "target" | "note">;
+
+/**
+ * Changes the coined terms under the lock translation runs write them with.
+ * `expectedSource` is the term's original as the page showed it, so a list
+ * that changed in the meantime isn't edited at the wrong place.
+ */
+async function changeCoined(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  index: number,
+  expectedSource: string,
+  fn: (terms: GlossaryTerm[]) => GlossaryTerm[],
+): Promise<void> {
+  await updateJson(
+    app.paths.phase3Glossary(pid, bookId),
+    Glossary,
+    () => ({ schemaVersion: 1 as const, terms: [] }),
+    (g) => {
+      if (g.terms[index]?.source !== expectedSource)
+        throw new UserError("The coined terms have changed. Reload the page and try again.");
+      return { schemaVersion: 1 as const, terms: fn([...g.terms]) };
+    },
+  );
+}
+
+/** Saves your version of a coined term; later chunks use it, and a conflict counts as settled. */
+export async function editCoined(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  index: number,
+  expectedSource: string,
+  fields: CoinedFields,
+): Promise<void> {
+  const source = fields.source.trim();
+  const target = fields.target.trim();
+  if (!source || !target) throw new UserError("A coined term needs an original and a translation.");
+  await changeCoined(app, pid, bookId, index, expectedSource, (terms) => {
+    const key = normalizeTerm(source);
+    if (terms.some((t, i) => i !== index && normalizeTerm(t.source) === key))
+      throw new UserError(`Another coined term is already "${source}".`);
+    return terms.map((t, i) =>
+      i === index
+        ? { ...t, kind: fields.kind, source, target, note: fields.note.trim(), conflict: null }
+        : t,
+    );
+  });
+}
+
+export async function deleteCoined(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  index: number,
+  expectedSource: string,
+): Promise<void> {
+  await changeCoined(app, pid, bookId, index, expectedSource, (terms) =>
+    terms.filter((_, i) => i !== index),
+  );
+}
+
+/**
+ * Adds a coined term to the book's knowledge base as your own entry (as you
+ * edited it there) and takes it off the coined terms.
+ */
+export async function moveCoined(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  index: number,
+  expectedSource: string,
+  entry: Parameters<typeof addEntry>[2],
+): Promise<Kb> {
+  const current = await loadGlossary(app, pid, bookId);
+  if (current.terms[index]?.source !== expectedSource)
+    throw new UserError("The coined terms have changed. Reload the page and try again.");
+  const kb = await addEntry(app, { kind: "book", pid, id: bookId }, entry);
+  await deleteCoined(app, pid, bookId, index, expectedSource);
+  return kb;
 }
 
 export async function tocView(app: AppContext, pid: string, bookId: string) {

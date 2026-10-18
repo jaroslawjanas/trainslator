@@ -46,6 +46,8 @@ export interface PairDetail {
     sourceFileName: string;
     targetFileName: string;
     phase1: { state: string; finishedAt: string | null; entries: number | null };
+    /** Set when the pair was made from a finished book. */
+    fromBook: { bookId: string; title: string; madeAt: string } | null;
   };
   source: EpubStructure;
   target: EpubStructure;

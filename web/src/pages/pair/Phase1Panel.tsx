@@ -6,7 +6,7 @@ import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
-import { plural } from "../../lib/format.ts";
+import { displayTitle, plural } from "../../lib/format.ts";
 import { useSettings } from "../SettingsPage.tsx";
 import type { PairDetail } from "./AlignmentPanel.tsx";
 import { Phase1Chapters } from "./Phase1Chapters.tsx";
@@ -32,13 +32,21 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
   if (pair.isLoading) return <Loader size="sm" />;
   if (!pair.data) return <Alert color="red">Couldn't load the pair.</Alert>;
   const job = (jobs.data?.jobs ?? []).find((j) => j.targetId === pairId && j.type === "phase1");
-  const { phase1 } = pair.data.pair;
+  const { phase1, fromBook } = pair.data.pair;
   const confirmed = pair.data.alignment.status === "confirmed";
   const readModel = settings.data?.settings.models.find(
     (m) => m.id === settings.data?.settings.steps["phase1.read"].modelId,
   );
 
   const run = async () => {
+    if (
+      fromBook &&
+      phase1.entries !== null &&
+      !window.confirm(
+        "Learn from this pair? The knowledge base that came from the book is replaced with what the AI learns from the two EPUBs. Your own changes are kept.",
+      )
+    )
+      return;
     try {
       await post(`/api/projects/${pid}/pairs/${pairId}/phase1/run`);
       void client.invalidateQueries({ queryKey: ["jobs"] });
@@ -53,6 +61,13 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
 
   return (
     <>
+      {fromBook && (
+        <Alert color="gray" mb="lg" maw={720}>
+          Made from the book “{displayTitle(fromBook.title)}”: its knowledge base is the book's, so
+          there's nothing to learn first. Learning again replaces it with what the AI finds by
+          comparing the two EPUBs; your own changes are kept.
+        </Alert>
+      )}
       {!confirmed && (
         <Alert color="yellow" mb="lg" maw={720}>
           Confirm the{" "}

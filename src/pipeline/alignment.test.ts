@@ -5,6 +5,7 @@ import {
   alignmentRatio,
   checkAlignment,
   fromAiAlignment,
+  identityAlignment,
   proposeAlignment,
   titleNumbers,
 } from "./alignment.ts";
@@ -178,5 +179,41 @@ describe("alignment proposal", () => {
     expect(problems).toContain("missing");
     expect(problems).toContain("T2, T3");
     expect(problems).toContain("no ids on either side");
+  });
+});
+
+describe("identity alignment (a book and its own build)", () => {
+  const inDoc = (s: Segment, docIndex: number): Segment => ({
+    ...s,
+    ranges: [{ docIndex, fromUnit: 0, toUnit: 5 }],
+  });
+  const source = [
+    inDoc(seg("d1s0", "Contents", 40, "front"), 0),
+    inDoc(seg("d1s1", "Chapter One", 3000), 1),
+    inDoc(seg("d1s2", "Chapter Two", 3000), 2),
+  ];
+  const target = source.map((s) => ({ ...s, title: `T: ${s.title}`, words: s.words - 200 }));
+
+  it("matches every chapter with the one of the same id, confirmed", () => {
+    const a = identityAlignment(source, target, 1)!;
+    expect(a).toMatchObject({ status: "confirmed", tocDepthSource: 1, tocDepthTarget: 1 });
+    expect(a.units.map((u) => [u.id, u.source, u.target, u.include, u.confidence])).toEqual([
+      ["a0", ["d1s0"], ["d1s0"], false, 1],
+      ["a1", ["d1s1"], ["d1s1"], true, 1],
+      ["a2", ["d1s2"], ["d1s2"], true, 1],
+    ]);
+  });
+
+  it("leaves out chapters kept in the original language", () => {
+    const a = identityAlignment(source, target, 1, new Set([2]))!;
+    expect(a.units.map((u) => u.include)).toEqual([false, true, false]);
+  });
+
+  it("gives up when the tables of contents differ", () => {
+    expect(identityAlignment(source, target.slice(1), 1)).toBeNull();
+    expect(
+      identityAlignment(source, [target[0]!, target[1]!, { ...target[2]!, id: "d1s9" }], 1),
+    ).toBeNull();
+    expect(identityAlignment([], [], 1)).toBeNull();
   });
 });

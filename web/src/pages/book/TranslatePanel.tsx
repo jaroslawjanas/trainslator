@@ -18,14 +18,18 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useWindowVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { get, post, put } from "../../api/client.ts";
+import { languageDisplayName } from "../../../../src/shared/languages.ts";
+import type { KbEntry } from "../../../../src/shared/schemas/kb.ts";
+import { del, get, post, put } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
+import { EntryDrawer } from "../kb/EntryDrawer.tsx";
 import { useProject, useSourceName } from "../ProjectPage.tsx";
 import { useSettings } from "../SettingsPage.tsx";
+import { type CoinedTerm, CoinedTermDrawer } from "./CoinedTermDrawer.tsx";
 import { TranslationModeChoice } from "./TranslationModeChoice.tsx";
 import type { BookDetail, ChapterView, UnitView } from "./types.ts";
 import { UnitRow, unitMark } from "./UnitRow.tsx";
@@ -318,28 +322,95 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
   );
 }
 
+/** A coined term as a new knowledge base entry, to check and complete before moving it. */
+function coinedEntry(t: CoinedTerm): KbEntry {
+  return {
+    id: "new",
+    kind: t.kind,
+    source: t.source,
+    aliases: [],
+    target: t.target,
+    targetSeen: [],
+    treatment: null,
+    attributes: [],
+    note: t.note,
+    examples: [],
+    refs: [],
+    status: "locked",
+    question: null,
+    origin: "user",
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
   const source = useSourceName(pid);
+  const client = useQueryClient();
+  const project = useProject(pid).data?.project;
+  const languages = {
+    source: languageDisplayName(project?.sourceLang ?? "en"),
+    target: project?.targetLangName || "Translation",
+  };
+  const jobs = useJobs();
+  // Translation runs write the coined terms, so they're changed only between runs.
+  const translating = (jobs.data?.jobs ?? []).some(
+    (j) =>
+      j.targetId === bookId &&
+      (j.type === "phase3" || j.type === "retranslate") &&
+      ACTIVE_JOB.includes(j.status),
+  );
+  const queryKey = ["target", bookId, "glossary"];
   const { data } = useQuery({
-    queryKey: ["target", bookId, "glossary"],
-    queryFn: () =>
-      get<{
-        terms: {
-          kind: string;
-          source: string;
-          target: string;
-          note: string;
-          conflict: string | null;
-        }[];
-      }>(`/api/projects/${pid}/books/${bookId}/glossary`),
+    queryKey,
+    queryFn: () => get<{ terms: CoinedTerm[] }>(`/api/projects/${pid}/books/${bookId}/glossary`),
   });
+  const [editing, setEditing] = useState<{ index: number; term: CoinedTerm } | null>(null);
+  const [moving, setMoving] = useState<{ index: number; term: CoinedTerm } | null>(null);
   if (!data) return <Loader size="sm" />;
+
+  const base = `/api/projects/${pid}/books/${bookId}/glossary`;
+  const call = async (fn: () => Promise<{ terms: CoinedTerm[] }>, message: string) => {
+    try {
+      client.setQueryData(queryKey, await fn());
+      void client.invalidateQueries({ queryKey: ["target", bookId, "kb"] });
+      void client.invalidateQueries({ queryKey: ["target", bookId, "kb-preview"] });
+      notifications.show({ color: "green", message });
+    } catch (e) {
+      notifications.show({ color: "red", title: "Couldn't save", message: (e as Error).message });
+      throw e;
+    }
+  };
+  const remove = (index: number, t: CoinedTerm) => {
+    if (!window.confirm(`Delete "${t.source}" from the coined terms?`)) return;
+    void call(
+      () => del<{ terms: CoinedTerm[] }>(`${base}/${index}?source=${encodeURIComponent(t.source)}`),
+      "Coined term deleted.",
+    ).catch(() => undefined);
+  };
+  const moveNotice = (t: CoinedTerm) =>
+    [
+      t.inKb
+        ? `The knowledge base already has "${t.source}" (${t.inKb.target ?? "undecided"}). Saving replaces that entry with this one.`
+        : null,
+      t.conflict ? `Translated two ways: later, ${t.conflict}. Settle it before saving.` : null,
+    ]
+      .filter(Boolean)
+      .join(" ") || null;
+
   return (
-    <Stack maw={960}>
+    <Stack maw={1080}>
       <Text size="sm" c="dimmed">
         Names and terms the AI had to invent while translating, because no knowledge base had them.
-        Later chunks reuse them. Add the important ones to the book's knowledge base to settle them.
+        Later chunks reuse them. Edit a term to change how later chunks translate it (passages
+        already translated keep the old wording; change those with search and replace in Review).
+        Move the ones worth keeping to the book's knowledge base, and delete the ones you don't
+        want.
       </Text>
+      {translating && (
+        <Alert color="gray">
+          The book is being translated. Change coined terms after it finishes or is paused.
+        </Alert>
+      )}
       {data.terms.length === 0 ? (
         <Text size="md" c="dimmed">
           Nothing was coined: every name and term came from the knowledge bases.
@@ -351,10 +422,11 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
               <Table.Th>{source}</Table.Th>
               <Table.Th>Translation</Table.Th>
               <Table.Th>Note</Table.Th>
+              <Table.Th />
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {data.terms.map((t) => (
+            {data.terms.map((t, index) => (
               <Table.Tr key={`${t.kind}:${t.source}`}>
                 <Table.Td>
                   <div className="tr-term">{t.source}</div>
@@ -364,6 +436,11 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
                 </Table.Td>
                 <Table.Td>
                   <div className="tr-term">{t.target}</div>
+                  {t.inKb && (
+                    <Text size="xs" c="dimmed">
+                      In the knowledge base as {t.inKb.target ?? "undecided"}
+                    </Text>
+                  )}
                 </Table.Td>
                 <Table.Td>
                   <Text size="sm" c="dimmed">
@@ -375,11 +452,76 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
                     </Text>
                   )}
                 </Table.Td>
+                <Table.Td>
+                  <Group gap={4} wrap="nowrap" justify="flex-end">
+                    <Button
+                      size="compact-sm"
+                      variant="subtle"
+                      disabled={translating}
+                      onClick={() => setEditing({ index, term: t })}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      size="compact-sm"
+                      variant="subtle"
+                      disabled={translating}
+                      onClick={() => setMoving({ index, term: t })}
+                    >
+                      Move to knowledge base
+                    </Button>
+                    <Button
+                      size="compact-sm"
+                      variant="subtle"
+                      color="red"
+                      disabled={translating}
+                      onClick={() => remove(index, t)}
+                    >
+                      Delete
+                    </Button>
+                  </Group>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       )}
+      <CoinedTermDrawer
+        term={editing?.term ?? null}
+        languages={languages}
+        onClose={() => setEditing(null)}
+        onSave={(fields) =>
+          call(
+            () =>
+              put<{ terms: CoinedTerm[] }>(`${base}/${editing!.index}`, {
+                source: editing!.term.source,
+                term: fields,
+              }),
+            "Coined term saved.",
+          )
+        }
+      />
+      <EntryDrawer
+        entry={moving ? coinedEntry(moving.term) : null}
+        isNew
+        title="Move to the knowledge base"
+        notice={moving ? moveNotice(moving.term) : null}
+        languages={languages}
+        onClose={() => setMoving(null)}
+        onSave={(e) =>
+          call(() => {
+            const { id: _id, updatedAt: _u, origin: _o, refs: _r, ...entry } = e;
+            return post<{ terms: CoinedTerm[] }>(`${base}/${moving!.index}/move`, {
+              source: moving!.term.source,
+              entry,
+            });
+          }, "Moved to the knowledge base.")
+        }
+        onSaveUnlocked={async () => undefined}
+        onUnlock={async () => undefined}
+        onDelete={async () => undefined}
+        onAsk={() => Promise.reject(new Error("Not available while moving a term."))}
+      />
     </Stack>
   );
 }

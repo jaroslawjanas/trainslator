@@ -55,7 +55,8 @@ export const KbEntry = z.object({
   status: KbStatus,
   /** For open entries: what still needs deciding. */
   question: z.string().nullable(),
-  origin: z.enum(["phase1", "phase2", "user"]),
+  /** "phase3": a term coined while translating a book, added when the book became a reference pair. */
+  origin: z.enum(["phase1", "phase2", "phase3", "user"]),
   updatedAt: IsoDate,
 });
 export type KbEntry = z.infer<typeof KbEntry>;

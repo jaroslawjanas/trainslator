@@ -4,6 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { loadSteps, phase2Estimate, ReviewFile, readOverrides } from "../../pipeline/phase2.ts";
 import { phase3Estimate, preparedFor } from "../../pipeline/phase3-job.ts";
+import { builtFile, makeReferencePair, referencePairPreview } from "../../services/book-pair.ts";
 import {
   bookDetail,
   deleteBook,
@@ -35,8 +36,11 @@ import {
   chaptersOverview,
   chapterUnits,
   decodeUnitKey,
+  deleteCoined,
+  editCoined,
   glossary,
   loadPlan,
+  moveCoined,
   removeManualEdit,
   saveManualEdit,
   saveToc,
@@ -44,10 +48,12 @@ import {
 } from "../../services/translation.ts";
 import { ID_RE } from "../../shared/schemas/common.ts";
 import { BookSetup } from "../../shared/schemas/epub.ts";
+import { KbKind } from "../../shared/schemas/kb.ts";
 import { RefKbMode, TranslationMode } from "../../shared/schemas/project.ts";
 import { readJson } from "../../store/json.ts";
 import type { AppContext } from "../context.ts";
 import { HttpError, idParam, intParam, jsonBody } from "../http.ts";
+import { NewEntry } from "./kb.ts";
 import { fileField } from "./pairs.ts";
 
 export function bookRoutes(app: AppContext): Hono {
@@ -394,6 +400,56 @@ export function bookRoutes(app: AppContext): Hono {
     c.json(await glossary(app, idParam(c, "pid"), idParam(c, "bookId"))),
   );
 
+  // Coined terms are written by translation runs, so they change only between runs.
+  const notTranslating = (bookId: string) => {
+    const active = app.runner.activeFor(bookId)?.type;
+    if (active === "phase3" || active === "retranslate")
+      throw new HttpError(
+        409,
+        "busy",
+        "The book is being translated. Change coined terms after it finishes or is paused.",
+      );
+  };
+  const CoinedTerm = z.object({
+    kind: KbKind,
+    source: z.string().max(500),
+    target: z.string().max(500),
+    note: z.string().max(2000),
+  });
+
+  r.put("/:pid/books/:bookId/glossary/:index", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    notTranslating(bookId);
+    const body = await jsonBody(c, z.object({ source: z.string(), term: CoinedTerm }));
+    await editCoined(app, pid, bookId, intParam(c, "index"), body.source, body.term);
+    app.events.changed(pid, "phase3", bookId);
+    return c.json(await glossary(app, pid, bookId));
+  });
+
+  r.delete("/:pid/books/:bookId/glossary/:index", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    notTranslating(bookId);
+    const source = c.req.query("source");
+    if (source === undefined)
+      throw new HttpError(400, "bad_request", "Say which coined term to delete.");
+    await deleteCoined(app, pid, bookId, intParam(c, "index"), source);
+    app.events.changed(pid, "phase3", bookId);
+    return c.json(await glossary(app, pid, bookId));
+  });
+
+  r.post("/:pid/books/:bookId/glossary/:index/move", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    notTranslating(bookId);
+    const body = await jsonBody(c, z.object({ source: z.string(), entry: NewEntry }));
+    const kb = await moveCoined(app, pid, bookId, intParam(c, "index"), body.source, body.entry);
+    app.events.changed(pid, "phase3", bookId);
+    app.events.changed(pid, "kb", bookId);
+    return c.json({ kb, ...(await glossary(app, pid, bookId)) });
+  });
+
   r.get("/:pid/books/:bookId/toc", async (c) =>
     c.json(await tocView(app, idParam(c, "pid"), idParam(c, "bookId"))),
   );
@@ -510,6 +566,37 @@ export function bookRoutes(app: AppContext): Hono {
           z.record(z.string(), z.unknown()),
         ).catch(() => undefined)) ?? null,
     });
+  });
+
+  // A reference pair from the finished book ------------------------------------
+
+  r.get("/:pid/books/:bookId/reference-pair", async (c) =>
+    c.json(await referencePairPreview(app, idParam(c, "pid"), idParam(c, "bookId"))),
+  );
+
+  r.post("/:pid/books/:bookId/reference-pair", async (c) => {
+    const pid = idParam(c, "pid");
+    const bookId = idParam(c, "bookId");
+    const body = await jsonBody(
+      c,
+      z.object({
+        mergeCoined: z.boolean().default(false),
+        removeBook: z.boolean().default(false),
+      }),
+      { optional: true },
+    );
+    if (app.runner.activeFor(bookId))
+      throw new HttpError(409, "busy", "Wait for the running job to finish first.");
+    if (!(await builtFile(app, pid, await app.projects.book(pid, bookId))))
+      throw new HttpError(
+        409,
+        "not_built",
+        "Build the EPUB first: the pair's translation is the built book.",
+      );
+    const pair = await makeReferencePair(app, pid, bookId, body);
+    app.events.changed(pid, "pairs", pair.id);
+    if (body.removeBook) app.events.changed(pid, "books", bookId);
+    return c.json({ pair }, 201);
   });
 
   r.get("/:pid/books/:bookId/output", async (c) => {

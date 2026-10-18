@@ -318,14 +318,51 @@ function makeUnit(
     const lc = lengthCost(wa, wb, ratio) - titleBonus(a, b, languages) * 0.5;
     confidence = Math.max(0, Math.min(1, 1 - lc / 2));
   }
-  const looksLikeBody = (list: Segment[], w: number) =>
-    list.some((s) => s.guess === "body") && w >= minWords;
   return {
     id: "",
     source: a.map((s) => s.id),
     target: b.map((s) => s.id),
-    include: looksLikeBody(a, wa) && looksLikeBody(b, wb / Math.max(ratio, 0.01)),
+    include:
+      looksLikeBody(a, wa, minWords) && looksLikeBody(b, wb / Math.max(ratio, 0.01), minWords),
     confidence: Math.round(confidence * 100) / 100,
+  };
+}
+
+/** Body text with enough words to be worth studying (not front matter, not a stub). */
+function looksLikeBody(list: Segment[], words: number, minWords: number): boolean {
+  return list.some((s) => s.guess === "body") && words >= minWords;
+}
+
+/**
+ * Aligns a book with its own build. The build keeps the original's files and
+ * table of contents, so every chapter matches the one with the same id. Null
+ * when the two tables of contents differ. Chapters only in files left in the
+ * original language (`keepDocs`) aren't included.
+ */
+export function identityAlignment(
+  source: Segment[],
+  target: Segment[],
+  depth: number,
+  keepDocs: ReadonlySet<number> = new Set(),
+  minWords = 150,
+): Alignment | null {
+  if (source.length === 0 || source.length !== target.length) return null;
+  if (source.some((s, i) => s.id !== target[i]?.id)) return null;
+  return {
+    schemaVersion: 1,
+    status: "confirmed",
+    tocDepthSource: depth,
+    tocDepthTarget: depth,
+    units: source.map((s, k) => {
+      const kept = s.ranges.length > 0 && s.ranges.every((r) => keepDocs.has(r.docIndex));
+      return {
+        id: `a${k}`,
+        source: [s.id],
+        target: [s.id],
+        include: !kept && looksLikeBody([s], s.words, minWords),
+        confidence: 1,
+      };
+    }),
   };
 }
 

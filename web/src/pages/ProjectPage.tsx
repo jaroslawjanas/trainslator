@@ -265,7 +265,7 @@ function Overview({
                         {
                           label:
                             p.phase1.entries !== null
-                              ? `Learned ${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}`
+                              ? `${p.fromBook ? "Made from a book: " : "Learned "}${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}`
                               : "Not learned yet",
                           mark,
                         },

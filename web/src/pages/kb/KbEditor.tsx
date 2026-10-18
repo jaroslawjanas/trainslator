@@ -349,7 +349,11 @@ export function KbEditor({
   const entries = useMemo(() => {
     const q = search.trim().toLowerCase();
     return (data?.kb.entries ?? [])
-      .filter((e) => (!kind || e.kind === kind) && (status === "all" || e.status === status))
+      .filter(
+        (e) =>
+          (!kind || e.kind === kind) &&
+          (status === "all" || (status === "coined" ? e.origin === "phase3" : e.status === status)),
+      )
       .filter(
         (e) =>
           !q ||
@@ -434,6 +438,10 @@ export function KbEditor({
                 { value: "open", label: "Open" },
                 { value: "locked", label: "Yours" },
                 { value: "auto", label: "Automatic" },
+                // Terms coined while translating a book that became this pair.
+                ...(data.kb.entries.some((e) => e.origin === "phase3")
+                  ? [{ value: "coined", label: "Coined" }]
+                  : []),
               ]}
             />
           </Group>

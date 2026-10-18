@@ -365,7 +365,7 @@ export async function loadResults(
   return out;
 }
 
-function normalizeTerm(s: string): string {
+export function normalizeTerm(s: string): string {
   return s.normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 }
 

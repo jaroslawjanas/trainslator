@@ -21,6 +21,7 @@ import { Section } from "../../components/PageHeader.tsx";
 import { RunPanel } from "../../components/RunPanel.tsx";
 import { formatDate, plural } from "../../lib/format.ts";
 import { useSourceName } from "../ProjectPage.tsx";
+import { ReferencePairModal } from "./ReferencePairModal.tsx";
 import type { BookDetail } from "./types.ts";
 
 interface Report {
@@ -53,6 +54,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
   const client = useQueryClient();
   const bookId = detail.book.id;
   const [useBest, setUseBest] = useState(false);
+  const [pairOpen, setPairOpen] = useState(false);
   const jobs = useJobs();
   const job = (jobs.data?.jobs ?? []).find((j) => j.targetId === bookId && j.type === "build");
   const report = useQuery({
@@ -172,6 +174,31 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
           </Stack>
         </Section>
       )}
+
+      {built && (
+        <Section
+          title="Use as a reference pair"
+          description="When the book is finished, other books in this project can learn from it as from a published translation."
+        >
+          <Stack gap="sm" maw={760}>
+            <Text size="sm">
+              The pair gets the original, this build as the translation, and the book's knowledge
+              base. The book itself stays as it is unless you choose to remove it.
+            </Text>
+            <Group>
+              <Button variant="default" onClick={() => setPairOpen(true)}>
+                Make a reference pair…
+              </Button>
+            </Group>
+          </Stack>
+        </Section>
+      )}
+      <ReferencePairModal
+        pid={pid}
+        bookId={bookId}
+        opened={pairOpen}
+        onClose={() => setPairOpen(false)}
+      />
     </>
   );
 }

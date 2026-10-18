@@ -26,7 +26,7 @@ import {
 import type { AppContext } from "../context.ts";
 import { HttpError, idParam, jsonBody } from "../http.ts";
 
-const NewEntry = z.object({
+export const NewEntry = z.object({
   kind: KbKind,
   source: z.string().min(1),
   aliases: z.array(z.string()),

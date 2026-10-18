@@ -139,9 +139,15 @@ export function EntryDrawer({
   onDelete,
   onAsk,
   languages,
+  title,
+  notice,
 }: {
   entry: KbEntry | null;
   isNew: boolean;
+  /** Instead of "New entry" or the entry's name. */
+  title?: string;
+  /** Shown above the fields, e.g. that saving replaces an entry. */
+  notice?: string | null;
   /** The book's languages, e.g. English and Polish, to say which fields are in which. */
   languages: { source: string; target: string };
   onClose: () => void;
@@ -172,10 +178,11 @@ export function EntryDrawer({
       onClose={onClose}
       position="right"
       size="lg"
-      title={isNew ? "New entry" : e.source}
+      title={title ?? (isNew ? "New entry" : e.source)}
       styles={{ title: { fontFamily: "var(--tr-serif)" } }}
     >
       <Stack>
+        {notice && <Alert color="yellow">{notice}</Alert>}
         {!isNew && (
           <Text size="sm" c="dimmed">
             {e.status === "locked"
@@ -185,7 +192,9 @@ export function EntryDrawer({
                 : "Added automatically."}{" "}
             {e.origin === "user"
               ? "You added it."
-              : `Found in ${e.origin === "phase1" ? "the reference pair" : "this book"}${e.refs.length > 0 ? `, in ${e.refs.length} chapter${e.refs.length === 1 ? "" : "s"}` : ""}.`}
+              : e.origin === "phase3"
+                ? "Coined while translating the book."
+                : `Found in ${e.origin === "phase1" ? "the reference pair" : "this book"}${e.refs.length > 0 ? `, in ${e.refs.length} chapter${e.refs.length === 1 ? "" : "s"}` : ""}.`}
           </Text>
         )}
         {e.status === "open" && e.question && (

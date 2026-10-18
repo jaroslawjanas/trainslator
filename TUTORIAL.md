@@ -534,6 +534,9 @@ On the project page, press **Add reference pair** and choose the **English origi
 **Published translation**, both as DRM-free EPUBs. The app reads both books' structure and opens
 **Alignment**.
 
+A book you finished in this project can become a pair too, without uploading or learning: see
+[Using the book as a reference pair](#using-the-book-as-a-reference-pair).
+
 ### Alignment: which chapters match
 
 Books and their translations don't always have the same chapters: a translation may lack the
@@ -988,7 +991,21 @@ Labels that match a chapter heading reuse that heading's translation; the rest a
 one small request at the end of the phase. Edit them and press **Save title and contents**.
 
 **Coined terms** lists names and terms the model had to invent because no knowledge base had them,
-with conflicts highlighted. Add the important ones to the book's knowledge base to settle them.
+with conflicts highlighted. Later chunks reuse them, so the book stays consistent. Each term has
+three actions:
+
+- **Edit** changes its kind, original, translation or note. Later chunks use your version, and a
+  conflict counts as settled. Passages already translated keep the old wording: change those with
+  search and replace in Review.
+- **Move to knowledge base** opens the usual entry editor with the term filled in, so you can add
+  other spellings, facts or a treatment before saving. The term then becomes one of your locked
+  entries and leaves the list. A term the knowledge base already has says so; moving it replaces
+  that entry.
+- **Delete** removes a term you don't want.
+
+Nothing is added to the knowledge base on its own: only what you move. Coined terms are deleted by
+**Translate the whole book again**, so move the ones worth keeping first. The actions are disabled
+while the book is being translated.
 
 ### Running it again
 
@@ -1146,6 +1163,32 @@ Every build is also kept in History, so you can download older builds later.
 > **Check it in a real reader.** Open the EPUB in Calibre, Thorium or your e-reader app. Look at
 > italics, footnotes, images, the table of contents and the language shown in the book's details.
 > Because of the new identifier, it won't collide with the original in your library.
+
+### Using the book as a reference pair
+
+When the book is finished, other books in the project can learn from it as from a published
+translation: useful for the next book of a series. Under **Use as a reference pair**, press **Make
+a reference pair…**. The pair gets:
+
+- the original EPUB;
+- the latest build as its translation (if you changed the translation since, the dialog says so;
+  build again first if the pair should have your latest text);
+- the book's knowledge base, with your own changes. Open questions go along; answer them in the
+  pair's knowledge base if you don't answer them in the book first.
+
+The chapters match one to one, so the alignment is already confirmed and nothing has to be
+learned. Two options:
+
+- **Also add the coined terms that aren't in the knowledge base**: they go into the pair's
+  knowledge base only, marked as coined (the **Coined** filter finds them). A term translated two
+  ways uses its first translation. To check them first, edit them or move them on
+  **Translation → Coined terms**. Off by default.
+- **Remove this book afterwards**: deletes the book with its translation history, Review and
+  earlier builds once the pair is made. Off by default.
+
+New books get the pair automatically, like any other; for books you added earlier, tick it in
+**Setup**. On such a pair, **Learn again** replaces the knowledge base that came from the book
+with what the AI learns from the two EPUBs (your own changes are kept), so you rarely need it.
 
 ---
 
@@ -1323,8 +1366,8 @@ about half a minute and reloads what it shows.
 
 - Prefer fixing the cause over fixing passages: a wrong name belongs in the knowledge base, a wrong
   punctuation habit in the language notes or style rules. Then re-translate.
-- Check **Coined terms** after translating. Move the good ones into the knowledge base and lock
-  them; fix the bad ones there too.
+- Check **Coined terms** after translating. Move the good ones into the knowledge base, edit the
+  ones you'd translate differently, and delete the rest.
 - Before trying a different model or mode, make sure the current translation is in History (it is
   after every run), then compare the two in Review.
 - Use **Translate again** with an instruction for a single passage, and **Edit or rewrite** with a

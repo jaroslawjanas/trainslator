@@ -30,7 +30,8 @@ to a finished book, with screenshots, recommendations and troubleshooting.
    byte for byte as it was.
 4. **Review, build and history.** You compare versions side by side, fix, rewrite or replace
    text, and build the EPUB. Every translation run and every build is saved, so you can compare
-   and restore.
+   and restore. A finished book can then become a reference pair itself, so the next book of a
+   series follows its choices.
 
 Each phase starts only when you press its button, so you can review and edit the knowledge
 bases in between. Your edits are kept when a phase runs again.
@@ -55,6 +56,10 @@ needs.
   and forms of address, style rules, open questions you can answer or ask a model about, and
   the exact text the model receives. Your changes are locked and survive re-runs.
 - **Alignment** of reference books by chapter, proposed by length or with AI.
+- **Finished books as reference pairs:** the original, the build and the book's knowledge base,
+  ready for the next book without learning or aligning.
+- **Coined terms** (names the AI had to invent while translating) you can edit, delete or move
+  into the knowledge base.
 - **Translation in chunks or whole chapters,** with checks on every answer, automatic repair
   turns, and passages that need attention marked for you, including passages that may still be
   partly in the source language.

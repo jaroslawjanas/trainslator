@@ -50,6 +50,8 @@ export const Pair = z.object({
     finishedAt: IsoDate.nullable(),
     entries: z.number().int().nonnegative().nullable(),
   }),
+  /** Set when the pair was made from a finished book: its knowledge base is the book's. */
+  fromBook: z.object({ bookId: Id, title: z.string(), madeAt: IsoDate }).nullable().default(null),
 });
 export type Pair = z.infer<typeof Pair>;
 
