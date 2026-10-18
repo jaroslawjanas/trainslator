@@ -12,9 +12,26 @@ import { projectRoutes } from "./routes/projects.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { securityMiddleware } from "./security.ts";
 
+/** Reads a file of the built web UI by its path ("index.html", "assets/…"), or null. */
+export type WebFiles = (file: string) => Promise<Uint8Array<ArrayBuffer> | null>;
+
+/** The built web UI in a folder (dist/web). */
+export function webFolder(dir: string): WebFiles {
+  const root = path.resolve(dir);
+  return async (rel) => {
+    const file = path.resolve(root, rel);
+    if (!file.startsWith(root)) return null;
+    try {
+      return await fs.readFile(file);
+    } catch {
+      return null;
+    }
+  };
+}
+
 export interface AppOptions {
-  /** Serve the built web UI from this folder (production). */
-  staticDir?: string;
+  /** Serve the built web UI (production and the standalone app). */
+  web?: WebFiles;
   /** Under pnpm dev: send page requests to the Vite dev server on this port. */
   devWebPort?: number;
 }
@@ -57,20 +74,15 @@ export function createApp(ctx: AppContext, options: AppOptions = {}): Hono {
     });
   }
 
-  if (options.staticDir) {
-    const root = path.resolve(options.staticDir);
+  const { web } = options;
+  if (web) {
     app.get("*", async (c) => {
       const url = new URL(c.req.url);
       const rel = decodeURIComponent(url.pathname).replace(/^\/+/, "");
-      const file = path.resolve(root, rel || "index.html");
-      const safe = file.startsWith(root) ? file : path.join(root, "index.html");
-      for (const candidate of [safe, path.join(root, "index.html")]) {
-        try {
-          const data = await fs.readFile(candidate);
-          return new Response(data, { headers: { "content-type": contentType(candidate) } });
-        } catch {
-          // try the next candidate
-        }
+      // Other paths get index.html: the web UI routes them itself.
+      for (const file of [rel || "index.html", "index.html"]) {
+        const data = await web(file);
+        if (data) return new Response(data, { headers: { "content-type": contentType(file) } });
       }
       return c.text("Not found", 404);
     });
@@ -88,6 +100,7 @@ function contentType(file: string): string {
     ".png": "image/png",
     ".ico": "image/x-icon",
     ".json": "application/json",
+    ".woff": "font/woff",
     ".woff2": "font/woff2",
   };
   return types[ext] ?? "application/octet-stream";

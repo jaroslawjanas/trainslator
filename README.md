@@ -67,16 +67,42 @@ needs.
 
 ## Requirements
 
-- **Node.js 24.21 or newer.** With nvm: `nvm install` and `nvm use` read the version from
-  `.nvmrc`.
-- **pnpm 12.** With Corepack: `corepack enable`. pnpm then picks the version pinned in
-  `package.json`.
 - **Access to an AI model:** an API key for Anthropic, Ollama Cloud or an OpenAI-compatible
   provider, a local server such as Ollama or vLLM, or Claude Code logged in with a Claude
   subscription.
 - **DRM-free, reflowable EPUB files.**
+- **To run from source only:** Node.js 24.21 or newer (with nvm, `nvm install` and `nvm use`
+  read the version from `.nvmrc`) and pnpm 12 (with Corepack, `corepack enable`; pnpm then picks
+  the version pinned in `package.json`). The downloads below need neither.
 
 ## Getting started
+
+### Download
+
+Download the file for your system from the
+[Releases page](https://github.com/jaroslawjanas/trainslator/releases):
+
+| System | File | Start it |
+|---|---|---|
+| Windows (x64) | `trainslator-<version>-windows-x64.zip` | Unzip it and double-click `trainslator.exe`. |
+| macOS (Apple Silicon) | `trainslator-<version>-macos-arm64.zip` | Unzip it and double-click `trainslator`. |
+| Linux (x64) | `trainslator-<version>-linux-x64.tar.gz` | Unpack it and run `./trainslator` in a terminal. |
+
+The program starts the server and opens the app in your browser. Keep its window open while you
+use Trainslator; closing it stops the server.
+
+The programs aren't code-signed, so the first run shows a warning:
+
+- **Windows:** "Windows protected your PC". Click **More info**, then **Run anyway**.
+- **macOS:** macOS says it can't check the program for malware. Open **System Settings → Privacy
+  & Security**, click **Open Anyway**, then open the program again.
+
+Your work is kept in a `data` folder next to the program, so put the program in a folder you own
+(not Program Files). API keys and `PORT` can go in a `.env` file next to it, in the same format
+as [.env.example](.env.example). To update, unzip the new version into the same folder: `data`
+and `.env` stay as they are.
+
+### From source
 
 ```sh
 pnpm install
@@ -84,7 +110,18 @@ cp .env.example .env      # then add your API key(s), see below
 pnpm dev
 ```
 
-Open http://localhost:5173. Then:
+Open http://localhost:5173.
+
+`pnpm dev` runs the API server (port 5174) and the UI dev server (port 5173) together, and
+restarts the server when the code changes, which interrupts running jobs. For everyday use and
+long runs, build the UI once and run a single server:
+
+```sh
+pnpm build
+pnpm start                # http://127.0.0.1:5174
+```
+
+### First steps
 
 1. **Settings → Connections and models:** add a connection (choose the provider kind, which
    fills in sensible defaults), add one or more models, and press **Test**. The test sends a
@@ -98,22 +135,14 @@ Open http://localhost:5173. Then:
 
 The [tutorial](TUTORIAL.md) covers each of these steps in detail.
 
-`pnpm dev` runs the API server (port 5174) and the UI dev server (port 5173) together, and
-restarts the server when the code changes, which interrupts running jobs. For everyday use and
-long runs, build the UI once and run a single server:
-
-```sh
-pnpm build
-pnpm start                # http://127.0.0.1:5174
-```
-
 ## API keys
 
 Keys are read by the server and never sent to the browser. Two ways to give a key:
 
 - **Environment variable (recommended):** put it in `.env`, for example
   `OPENROUTER_API_KEY=sk-…`, and in the connection choose "Environment variable" with that
-  name. `.env` is not committed. Restart the server after changing `.env`.
+  name. `.env` is not committed. Restart the server after changing `.env`. The downloaded
+  program reads the `.env` next to it.
 - **Paste key:** it is stored in `data/settings.json` on your disk, and shown masked in the UI.
 
 Claude Code needs no key: it runs the `claude` program on your computer with the subscription
@@ -122,7 +151,8 @@ you're logged in with, and never uses an API key.
 ## Data folder
 
 Everything is stored as JSON files in `./data` (not committed), or in the folder set by
-`TRAINSLATOR_DATA_DIR`:
+`TRAINSLATOR_DATA_DIR`. The downloaded program uses a `data` folder next to it instead of
+`./data`.
 
 ```
 data/
@@ -146,7 +176,7 @@ Back up the folder to keep your work. Deleting a project deletes its folder.
 | Variable | Meaning |
 |---|---|
 | `PORT` | Port of the API server (default 5174). |
-| `TRAINSLATOR_DATA_DIR` | Where the data folder is (default `./data`). |
+| `TRAINSLATOR_DATA_DIR` | Where the data folder is (default `./data`, or `data` next to the downloaded program). |
 | `TRAINSLATOR_LOG_BODIES` | `1` saves the full request and response of every AI call in `logs/calls/`. Useful when a step misbehaves; the files contain book text and get large. |
 | Your key variables | Any names you use in connections, for example `OPENAI_API_KEY`. |
 
@@ -157,10 +187,28 @@ Back up the folder to keep your work. Deleting a project deletes its folder.
 | `pnpm dev` | API server and web UI for development, restarting the server on code changes. |
 | `pnpm build` | Builds the web UI into `dist/web`. |
 | `pnpm start` | One server on 127.0.0.1:5174 with the API and the built UI. |
+| `pnpm package` | Builds the downloadable program for this system into `dist/standalone`, then starts it once to check that it serves the app. |
 | `pnpm check` | Type check, lint and tests. |
 | `pnpm test:live --base-url … --model … --kind … --key-env … [--source en\|de\|pl] [--target pl]` | Runs every step against a real API on a tiny invented book (about 15 small requests) and reports whether prompt caching works. |
 | `pnpm test:corpus` | Round-trips every EPUB in `data/corpus` through the reader and writer without AI, and reports anything that wouldn't survive translation unchanged. Good for checking unusual books. |
 | `pnpm translate:dev book.epub [--source de] --target pl --base-url … --model …` | Phase 3 and build from the command line, without knowledge bases. For debugging. |
+
+## Releases
+
+The downloadable program is a copy of Node with the server and the built web UI inside it (a
+[single executable application](https://nodejs.org/api/single-executable-applications.html)).
+`pnpm package` builds it for the system it runs on.
+
+To publish a release, push a version tag:
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The Release workflow builds the program on Windows, Linux and macOS, and publishes a GitHub
+release with the three files once all three builds pass. **Run workflow** on the Actions tab
+builds them without releasing; the files are attached to that run.
 
 ## Security
 

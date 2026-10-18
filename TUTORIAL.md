@@ -106,9 +106,12 @@ the guide says English (see [section 6](#6-projects-and-language-notes)).
 
 The short path from nothing to a translated EPUB. Every step links to its full description.
 
-1. **Install the tools:** Node.js 24.21 or newer and pnpm 12. See [section 3](#3-installing-and-running).
-2. **Install and start the app:** `pnpm install`, copy `.env.example` to `.env` and add your API
-   key, then `pnpm dev` and open http://localhost:5173.
+1. **Get the app:** download the program for your system from the
+   [Releases page](https://github.com/jaroslawjanas/trainslator/releases), or install Node.js
+   24.21 or newer and pnpm 12 to run it from source. See [section 3](#3-installing-and-running).
+2. **Start the app:** double-click the downloaded program, which opens the app in your browser.
+   From source: `pnpm install`, copy `.env.example` to `.env` and add your API key, then
+   `pnpm dev` and open http://localhost:5173.
 3. **Connect an AI provider:** **Settings → Add connection**, then **Add model** and **Test**.
    Apply the suggested settings if the test offers any. See [section 4](#4-connecting-ai-models).
 4. **Choose a model for each step:** **Settings → Models for each step**. Fast models for phase 1,
@@ -136,13 +139,41 @@ The short path from nothing to a translated EPUB. Every step links to its full d
 
 ## 3. Installing and running
 
+### Download the app
+
+The easiest way to run Trainslator is the program on the
+[Releases page](https://github.com/jaroslawjanas/trainslator/releases). It has everything built
+in, so you don't need Node or pnpm.
+
+| System | File | Start it |
+|---|---|---|
+| Windows (x64) | `trainslator-<version>-windows-x64.zip` | Unzip it and double-click `trainslator.exe`. |
+| macOS (Apple Silicon) | `trainslator-<version>-macos-arm64.zip` | Unzip it and double-click `trainslator`. |
+| Linux (x64) | `trainslator-<version>-linux-x64.tar.gz` | Unpack it and run `./trainslator` in a terminal. |
+
+The program starts the server, prints its address and opens the app in your browser. Its window
+(a console window on Windows, Terminal on macOS) is the server: keep it open while you work, and
+close it to stop Trainslator. Starting the program a second time just opens the browser again.
+
+The programs aren't code-signed, so Windows and macOS warn you the first time:
+
+- **Windows:** SmartScreen says "Windows protected your PC". Click **More info**, then **Run
+  anyway**.
+- **macOS:** macOS says it can't check the program for malware. Open **System Settings → Privacy
+  & Security**, scroll down, click **Open Anyway**, then open the program again.
+
+The program keeps your work in a `data` folder next to it, so unzip it into a folder you own,
+such as Documents, not Program Files. A `.env` file next to the program works like the one
+described below, for API keys and the port. To update, unzip the new version into the same
+folder; `data` and `.env` stay as they are.
+
 ### What you need
 
-- **Node.js 24.21 or newer.** With nvm, `nvm install` and `nvm use` in the project folder read the
-  version from `.nvmrc`. Node runs the server's TypeScript directly, so there's no build step for
-  the server.
-- **pnpm 12.** The easiest way is Corepack, which ships with Node: `corepack enable`. pnpm then
-  uses the exact version pinned in `package.json`.
+- **Node.js 24.21 or newer** (from source only). With nvm, `nvm install` and `nvm use` in the
+  project folder read the version from `.nvmrc`. Node runs the server's TypeScript directly, so
+  there's no build step for the server.
+- **pnpm 12** (from source only). The easiest way is Corepack, which ships with Node:
+  `corepack enable`. pnpm then uses the exact version pinned in `package.json`.
 - **Access to at least one AI model**, any of:
   - an API key for Anthropic, OpenAI, OpenRouter, DeepSeek, Google Gemini or Ollama Cloud;
   - a model server on your own machine or network (Ollama, vLLM, SGLang, llama.cpp);
@@ -150,7 +181,7 @@ The short path from nothing to a translated EPUB. Every step links to its full d
 - **DRM-free, reflowable EPUB files.** Books with DRM and fixed-layout EPUBs (picture books, comics
   laid out page by page) are rejected when you add them.
 
-### Install and start
+### Install and start from source
 
 ```sh
 corepack enable           # once, if pnpm isn't installed
@@ -201,8 +232,8 @@ OPENROUTER_API_KEY=
 
 ### Where your work is stored
 
-Everything lives as JSON files in `./data`, or in the folder named by `TRAINSLATOR_DATA_DIR`.
-There's no database. Back up that folder to keep your work; deleting a project in the app deletes
+Everything lives as JSON files in `./data` (with the downloaded program, in the `data` folder next
+to it), or in the folder named by `TRAINSLATOR_DATA_DIR`. There's no database. Back up that folder to keep your work; deleting a project in the app deletes
 its folder. The full layout is in the [README](README.md#data-folder).
 
 ### Security

@@ -13,6 +13,7 @@
     "dev:server": "node scripts/dev-server.ts",
     "dev:web": "vite",
     "build": "vite build",
+    "package": "pnpm build && node scripts/package.ts",
     "start": "node --env-file-if-exists=.env src/server/main.ts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.web.json",
     "lint": "biome check .",
@@ -62,6 +63,8 @@
     "postcss": "^8.5.29",
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",
+    "postject": "1.0.0-alpha.6",
+    "rolldown": "1.2.13",
     "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"

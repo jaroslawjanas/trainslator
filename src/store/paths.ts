@@ -1,9 +1,16 @@
 import path from "node:path";
 import { ID_RE } from "../shared/schemas/common.ts";
 
-export function defaultDataDir(): string {
+/**
+ * TRAINSLATOR_DATA_DIR if set, else ./data. The standalone app keeps its data
+ * next to the program instead, since it may be started from any folder.
+ */
+export function defaultDataDir(options: { standalone?: boolean } = {}): string {
   const fromEnv = process.env.TRAINSLATOR_DATA_DIR?.trim();
-  return path.resolve(fromEnv ? fromEnv : "data");
+  if (fromEnv) return path.resolve(fromEnv);
+  return options.standalone
+    ? path.join(path.dirname(process.execPath), "data")
+    : path.resolve("data");
 }
 
 function checkId(id: string): string {

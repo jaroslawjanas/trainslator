@@ -1,0 +1,72 @@
+# Pushing a tag like v0.2.0 builds the standalone app on Windows, Linux and
+# macOS and publishes a release with the three files. "Run workflow" on the
+# Actions tab only builds them; the files are attached to that run.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: windows-x64
+          - os: ubuntu-latest
+            target: linux-x64
+          - os: macos-latest
+            target: macos-arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm package
+      # tar.gz on Linux keeps the program executable.
+      - name: Archive
+        shell: bash
+        run: |
+          name="trainslator-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
+          cd dist/standalone
+          case "$RUNNER_OS" in
+            Windows) 7z a "../../$name.zip" trainslator.exe ;;
+            macOS) zip "../../$name.zip" trainslator ;;
+            Linux) tar -czf "../../$name.tar.gz" trainslator ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: trainslator-*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" release/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "Trainslator $GITHUB_REF_NAME"
+          --generate-notes
