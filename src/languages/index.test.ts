@@ -75,20 +75,49 @@ describe("language files", () => {
       allLanguageData()
         .map((d) => d.tag)
         .sort(),
-    ).toEqual(["de", "en", "pl"]);
+    ).toEqual(
+      "bg ca cs da de el en es fil fr hr id it ms nb nl pl pt ro ru sk sl sr sv uk".split(" "),
+    );
     const file = JSON.parse(
       readFileSync(new URL("./language.schema.json", import.meta.url), "utf8"),
     );
     expect(file).toEqual(z.toJSONSchema(LanguageData));
   });
 
-  it("offer English, German and Polish as sources", () => {
-    expect(SOURCE_LANGUAGES).toEqual(["en", "de", "pl"]);
-    expect(sourceLanguage("en")).toEqual({ tag: "en", name: "English", article: "an" });
+  it("offer every language with a file as a source, English first", () => {
+    expect(
+      SOURCE_LANGUAGES.map((t) => `${sourceLanguage(t).article} ${sourceLanguage(t).name}`),
+    ).toEqual([
+      "an English",
+      "a Bulgarian",
+      "a Catalan",
+      "a Croatian",
+      "a Czech",
+      "a Danish",
+      "a Dutch",
+      "a Filipino",
+      "a French",
+      "a German",
+      "a Greek",
+      "an Indonesian",
+      "an Italian",
+      "a Malay",
+      "a Norwegian Bokmål",
+      "a Polish",
+      "a Portuguese",
+      "a Romanian",
+      "a Russian",
+      "a Serbian",
+      "a Slovak",
+      "a Slovenian",
+      "a Spanish",
+      "a Swedish",
+      "a Ukrainian",
+    ]);
     expect(sourceLanguage("de")).toEqual({ tag: "de", name: "German", article: "a" });
-    expect(sourceLanguage("pl")).toEqual({ tag: "pl", name: "Polish", article: "a" });
     expect(languageData("de-AT")?.tag).toBe("de");
-    expect(languageData("fr")).toBeNull();
+    expect(languageData("sr-Latn")?.tag).toBe("sr");
+    expect(languageData("fi")).toBeNull();
   });
 
   it("keep English front and back matter exactly as before", () => {
@@ -102,6 +131,14 @@ describe("language files", () => {
   it("keep English name keys exactly as before", () => {
     expect(keyArticleRegex("en")!.source).toBe("^(the|a|an)\\s+");
     expect(keyArticleRegex("pl")).toBeNull();
+  });
+
+  it("let articles ending in an apostrophe join the word", () => {
+    const fr = keyArticleRegex("fr")!;
+    expect("l'ordre".replace(fr, "")).toBe("ordre");
+    expect("l' ordre".replace(fr, "")).toBe("ordre");
+    expect("le chevalier".replace(fr, "")).toBe("chevalier");
+    expect("lequel".replace(fr, "")).toBe("lequel");
   });
 
   it("pin German articles: keys of your own changes are stored with them", () => {

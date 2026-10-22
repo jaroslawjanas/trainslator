@@ -61,7 +61,8 @@ async function main(): Promise<void> {
     const tocUnits = extractTocUnits(book);
     for (const u of tocUnits) if (u.translate) translations.set(u.key, u.text);
     // Front and back matter are guessed in the book's own language.
-    const segments = buildSegments(book, book.pkg.languages[0] ?? "en");
+    const lang = book.pkg.languages[0] ?? "en";
+    const segments = buildSegments(book, lang);
 
     const problems: string[] = [];
     try {
@@ -95,9 +96,16 @@ async function main(): Promise<void> {
     const status = problems.length === 0 ? "OK  " : "FAIL";
     if (problems.length > 0) failures++;
     console.log(
-      `${status} ${file}: ${book.docs.length} files, ${units} units, ${unsafe} unsafe, ${depth1} chapters (TOC: ${book.tocSource}), ${ms} ms`,
+      `${status} ${file} (${lang}): ${book.docs.length} files, ${units} units, ${unsafe} unsafe, ${depth1} chapters (TOC: ${book.tocSource}), ${ms} ms`,
     );
     for (const p of problems.slice(0, 10)) console.log(`     - ${p}`);
+    // Front and back matter guesses, to check a language file's title words on real books.
+    for (const guess of ["front", "back"] as const) {
+      const titles = (segments.segmentsByDepth["1"] ?? [])
+        .filter((s) => s.guess === guess)
+        .map((s) => s.title || "(untitled)");
+      if (titles.length > 0) console.log(`     ${guess}: ${titles.join(" | ")}`);
+    }
   }
   if (failures > 0) process.exitCode = 1;
 }

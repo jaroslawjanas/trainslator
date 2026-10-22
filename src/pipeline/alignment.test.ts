@@ -48,7 +48,7 @@ describe("alignment proposal", () => {
     expect(titleNumbers("The First Day", "en")).toEqual([]);
     expect(titleNumbers("One Last Night", "en")).toEqual([]);
     expect(titleNumbers("Die erstaunliche Reise", "de")).toEqual([]);
-    expect(titleNumbers("Chapter One", "fr")).toEqual([]);
+    expect(titleNumbers("Chapter One", "fi")).toEqual([]);
     // Digits and Roman numerals win; without a language only they count.
     expect(titleNumbers("Chapter One (7)", "en")).toEqual([7]);
     expect(titleNumbers("Chapter One")).toEqual([]);

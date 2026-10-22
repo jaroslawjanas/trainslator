@@ -151,5 +151,6 @@
     "me",
     "go"
   ],
-  "preambles": ["here is", "here's", "sure,", "sure!", "translation:", "translated text:"]
+  "preambles": ["here is", "here's", "sure,", "sure!", "translation:", "translated text:"],
+  "translationWords": ["translat"]
 }

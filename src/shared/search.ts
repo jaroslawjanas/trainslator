@@ -1,6 +1,7 @@
 /**
  * Text search that by default ignores case and accents: "zrodlo" finds
- * "Źródło", "ł" counts as "l" and "ß" as "ss". Shared by the server's search and replace
+ * "Źródło", "ł", "ø" and "đ" count as "l", "o" and "d", and "ß", "æ" and "œ" as
+ * "ss", "ae" and "oe". Shared by the server's search and replace
  * and the page's highlighting, so all find the same places.
  */
 
@@ -26,7 +27,11 @@ function fold(text: string): { folded: string; at: number[]; end: number[] } {
       .replace(/\p{M}/gu, "")
       .toLowerCase()
       .replace(/ł/g, "l")
-      .replace(/ß/g, "ss");
+      .replace(/ø/g, "o")
+      .replace(/đ/g, "d")
+      .replace(/ß/g, "ss")
+      .replace(/æ/g, "ae")
+      .replace(/œ/g, "oe");
     for (let k = 0; k < f.length; k++) {
       folded += f[k];
       at.push(i);

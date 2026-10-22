@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { SOURCE_LANGUAGES } from "../languages/index.ts";
 import { emptyUsage } from "../shared/schemas/common.ts";
 import { MASKED } from "../shared/schemas/settings.ts";
 import { type FakeServer, startFakeOpenAI } from "../testing/fake-openai.ts";
@@ -220,7 +221,7 @@ describe("server", () => {
     expect(fake.requests.at(-1)!.model).toBe("strong-model");
   });
 
-  it("translates from English, German or Polish", async () => {
+  it("translates from the languages with a word file", async () => {
     srv = await makeTestServer();
     const create = (body: Record<string, unknown>) =>
       srv!.call("POST", "/api/projects", { name: "P", ...body });
@@ -230,21 +231,26 @@ describe("server", () => {
       targetLang: "pl",
     });
     expect(english.project.sourceLang).toBe("en");
-    for (const sourceLang of ["de", "pl"]) {
+    for (const sourceLang of ["de", "pl", "es", "ru", "el"]) {
       const res = await create({ sourceLang, targetLang: "en" });
       expect(res.status).toBe(201);
       expect(((await res.json()) as { project: { sourceLang: string } }).project.sourceLang).toBe(
         sourceLang,
       );
     }
-    expect((await create({ sourceLang: "fr", targetLang: "pl" })).status).toBe(400);
+    expect((await create({ sourceLang: "fi", targetLang: "pl" })).status).toBe(400);
     expect((await create({ sourceLang: "de", targetLang: "de-AT" })).status).toBe(400);
 
     const languages = await srv.json<{
       languages: { tag: string }[];
       sources: { tag: string; name: string }[];
     }>("GET", "/api/projects/languages");
-    expect(languages.sources.map((s) => s.name)).toEqual(["English", "German", "Polish"]);
+    expect(languages.sources.map((s) => s.tag)).toEqual(SOURCE_LANGUAGES);
+    expect(languages.sources.slice(0, 3).map((s) => s.name)).toEqual([
+      "English",
+      "Bulgarian",
+      "Catalan",
+    ]);
     expect(languages.languages.some((l) => l.tag === "en")).toBe(true);
   });
 

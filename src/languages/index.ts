@@ -1,8 +1,30 @@
 import { z } from "zod";
 import { languageDisplayName, primarySubtag } from "../shared/languages.ts";
+import bg from "./bg.json" with { type: "json" };
+import ca from "./ca.json" with { type: "json" };
+import cs from "./cs.json" with { type: "json" };
+import da from "./da.json" with { type: "json" };
 import de from "./de.json" with { type: "json" };
+import el from "./el.json" with { type: "json" };
 import en from "./en.json" with { type: "json" };
+import es from "./es.json" with { type: "json" };
+import fil from "./fil.json" with { type: "json" };
+import fr from "./fr.json" with { type: "json" };
+import hr from "./hr.json" with { type: "json" };
+import id from "./id.json" with { type: "json" };
+import it from "./it.json" with { type: "json" };
+import ms from "./ms.json" with { type: "json" };
+import nb from "./nb.json" with { type: "json" };
+import nl from "./nl.json" with { type: "json" };
 import pl from "./pl.json" with { type: "json" };
+import pt from "./pt.json" with { type: "json" };
+import ro from "./ro.json" with { type: "json" };
+import ru from "./ru.json" with { type: "json" };
+import sk from "./sk.json" with { type: "json" };
+import sl from "./sl.json" with { type: "json" };
+import sr from "./sr.json" with { type: "json" };
+import sv from "./sv.json" with { type: "json" };
+import uk from "./uk.json" with { type: "json" };
 
 /**
  * Words of a language that the code needs: articles to ignore in names,
@@ -22,7 +44,7 @@ export const LanguageData = z.strictObject({
     .enum(["a", "an"])
     .describe('English article before the language\'s name: "an English book", "a German book".'),
   keyArticles: Words.optional().describe(
-    "Articles ignored at the start of names and terms when entries are matched. Keys of your own changes are stored with them, so changing the list changes which entries count as the same.",
+    "Articles ignored at the start of names and terms when entries are matched. An article ending in an apostrophe (French l') may be joined to the word. Keys of your own changes are stored with them, so changing the list changes which entries count as the same.",
   ),
   endings: Words.optional().describe(
     "Endings a name or term may take in running text (German: s, en; Polish: a, owi …).",
@@ -51,19 +73,53 @@ export const LanguageData = z.strictObject({
   preambles: Words.optional().describe(
     "Phrases a model may start an answer with instead of the translation, in this language.",
   ),
+  translationWords: Words.optional().describe(
+    'Stems of the word for "translation" (übersetz, tłumacz): an answer that starts like a preamble and mentions one is taken for a preamble.',
+  ),
   notes: z.string().optional(),
 });
 export type LanguageData = z.infer<typeof LanguageData>;
 
 const FILES: Record<string, LanguageData> = Object.fromEntries(
-  [en, de, pl].map((file) => {
+  [
+    en,
+    de,
+    pl,
+    bg,
+    ca,
+    cs,
+    da,
+    el,
+    es,
+    fil,
+    fr,
+    hr,
+    id,
+    it,
+    ms,
+    nb,
+    nl,
+    pt,
+    ro,
+    ru,
+    sk,
+    sl,
+    sr,
+    sv,
+    uk,
+  ].map((file) => {
     const data = LanguageData.parse(file);
     return [data.tag, data];
   }),
 );
 
-/** The languages books can be translated from. */
-export const SOURCE_LANGUAGES: readonly string[] = ["en", "de", "pl"];
+/** The languages books can be translated from: every language with a file, English first. */
+export const SOURCE_LANGUAGES: readonly string[] = [
+  "en",
+  ...Object.keys(FILES)
+    .filter((tag) => tag !== "en")
+    .sort((a, b) => languageDisplayName(a).localeCompare(languageDisplayName(b), "en")),
+];
 
 /** A language's word data, by its primary subtag ("de-AT" uses de.json), or null. */
 export function languageData(tag: string): LanguageData | null {
@@ -130,13 +186,19 @@ export function matterMatchers(tag: string): { front: RegExp | null; back: RegEx
   }));
 }
 
-/** The leading-article pattern for name keys, on lowercased text (null: none). */
+/**
+ * The leading-article pattern for name keys, on lowercased text (null: none).
+ * Articles ending in an apostrophe ("l'") may be joined to the word.
+ */
 export function keyArticleRegex(tag: string): RegExp | null {
   const data = languageData(tag);
   return memoized(`articles:${data?.tag ?? ""}`, () => {
     const articles = data?.keyArticles ?? [];
-    return articles.length > 0
-      ? new RegExp(`^(${articles.map(escapeRegExp).join("|")})\\s+`)
-      : null;
+    const spaced = articles.filter((a) => !a.endsWith("'")).map(escapeRegExp);
+    const joined = articles.filter((a) => a.endsWith("'")).map(escapeRegExp);
+    if (joined.length === 0)
+      return spaced.length > 0 ? new RegExp(`^(${spaced.join("|")})\\s+`) : null;
+    if (spaced.length === 0) return new RegExp(`^(${joined.join("|")})\\s*`);
+    return new RegExp(`^(?:(${spaced.join("|")})\\s+|(${joined.join("|")})\\s*)`);
   });
 }

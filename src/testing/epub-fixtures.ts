@@ -468,3 +468,54 @@ export function sampleGermanNovel(): Uint8Array {
     ],
   });
 }
+
+/**
+ * A small Russian book: front and back matter with Russian titles, names that
+ * change form ("Ордена", "Анны", "Петру", "у Чёрной башни"), ты and вы, and
+ * «» quotation marks.
+ */
+export function sampleRussianNovel(): Uint8Array {
+  return buildFixtureEpub({
+    language: "ru",
+    title: "Чёрная башня",
+    identifier: "urn:uuid:cccccccc-1234-4234-8234-123456789abc",
+    docs: [
+      {
+        path: "text/soderzhanie.xhtml",
+        title: "Содержание",
+        body: `<h1>Содержание</h1>
+<p>Глава первая</p>
+<p>Глава вторая</p>`,
+      },
+      {
+        path: "text/g1.xhtml",
+        title: "Глава первая",
+        body: `<h1>Глава первая</h1>
+<p>Анна ждала у ворот Чёрной башни, пока рыцари Ордена не вернулись.</p>
+<p>«Входите, — сказал ей капитан, — Орден уже ждёт вас».</p>
+<p>Брат Анны, Пётр, стоял за ним и молчал.</p>
+<p>С зимы никто не поднимался к Чёрной башне.</p>`,
+      },
+      {
+        path: "text/g2.xhtml",
+        title: "Глава вторая",
+        body: `<h1>Глава вторая</h1>
+<p>«Значит, ты её нашла», — прошептал Пётр, когда они остались одни.</p>
+<p>Анна кивнула и показала Петру печать Ордена.</p>
+<p>Капитан не должен был ничего об этом узнать.</p>`,
+      },
+      {
+        path: "text/blagodarnosti.xhtml",
+        title: "Благодарности",
+        body: `<h1>Благодарности</h1>
+<p>Спасибо всем, кто помог этой книге появиться.</p>`,
+      },
+    ],
+    toc: [
+      { title: "Содержание", href: "text/soderzhanie.xhtml" },
+      { title: "Глава первая", href: "text/g1.xhtml" },
+      { title: "Глава вторая", href: "text/g2.xhtml" },
+      { title: "Благодарности", href: "text/blagodarnosti.xhtml" },
+    ],
+  });
+}

@@ -36,13 +36,15 @@ to a finished book, with screenshots, recommendations and troubleshooting.
 Each phase starts only when you press its button, so you can review and edit the knowledge
 bases in between. Your edits are kept when a phase runs again.
 
-Books can be translated from **English, German or Polish** into any language, including
-right-to-left ones. You pick both when you create a project. The instructions to the AI are in
-English with the source language named in them, and the AI's notes (synopses, knowledge base
-notes, questions) stay in English too. German and Polish change the form of names ("des Ordens",
-"w Krakowie"), so for them the AI is asked for names and terms in their base form, and the app
-finds them in any form when it counts where an entry appears or which reference entries a book
-needs.
+Books can be translated from **25 languages** into any language, including right-to-left ones:
+English, Bulgarian, Catalan, Croatian, Czech, Danish, Dutch, Filipino, French, German, Greek,
+Indonesian, Italian, Malay, Norwegian Bokmål, Polish, Portuguese, Romanian, Russian, Serbian,
+Slovak, Slovenian, Spanish, Swedish and Ukrainian. You pick both when you create a project. The
+instructions to the AI are in English with the source language named in them, and the AI's notes
+(synopses, knowledge base notes, questions) stay in English too. For sources other than English,
+the AI is asked for names and terms in their base form. Many of these languages change the form of
+names ("des Ordens", "w Krakowie", "v Praze", "у Петра"), and the app finds them in any form when
+it counts where an entry appears or which reference entries a book needs.
 
 ## Features
 
@@ -235,7 +237,7 @@ input tokens, most of them cached, and 170,000 output tokens, in about 6 minutes
 
 ## Limitations
 
-- Source books must be in English, German or Polish (see below for adding a language).
+- Source books must be in one of the 25 languages above (see below for adding a language).
 - Fixed-layout EPUBs and DRM-protected books are rejected.
 - Text inside images, SVG and MathML is left as is.
 - For right-to-left targets, the text direction is set, but the book's CSS is not mirrored.
@@ -243,22 +245,27 @@ input tokens, most of them cached, and 170,000 output tokens, in about 6 minutes
 
 ## Adding a source language
 
-Each source language is a JSON file in `src/languages/` (`en.json`, `de.json`, `pl.json`), checked
-against `language.schema.json`, so an editor completes and validates the fields. To add one:
+Each source language is a JSON file in `src/languages/` (`en.json`, `de.json`, `cs.json` …),
+checked against `language.schema.json`, so an editor completes and validates the fields. The code
+handles any language written with spaces between words, upper and lower case, and endings only at
+the end of words (Latin, Cyrillic and Greek script). To add one:
 
-1. Copy `de.json` to a file named after the language tag, for example `cs.json`, and fill it in:
-   - `tag`: the language tag, `cs`;
-   - `article`: "a" or "an", as in "a Czech novel";
-   - `keyArticles`: articles to ignore when matching names (none for Czech);
+1. Copy the file of a language that works the same way to a file named after the new tag, for
+   example `cs.json` to `lt.json`, and fill it in:
+   - `tag`: the language tag, `lt`;
+   - `article`: "a" or "an", as in "a Lithuanian novel";
+   - `keyArticles`: articles to ignore when matching names (none for Lithuanian; one ending in an
+     apostrophe, like French `l'`, may be joined to the word);
    - `endings` and `alternations`: case endings and stem changes, so names are found in any form;
    - `frontMatter`, `backMatter` and `chapterWords`: title words that help guess the book's parts;
-   - `numberWords` and `ordinals`: for matching "Chapter One" with "Kapitola první";
+   - `numberWords` and `ordinals`: for matching "Chapter One" with "Pirmas skyrius";
    - `commonWords`: frequent short words, used to notice text left untranslated;
-   - `preambles`: phrases a model may put before a translation into this language.
-2. Import the file in `src/languages/index.ts`, add it to the list of files there, and add its tag
-   to `SOURCE_LANGUAGES`.
-3. Add the tag to the language lists the tests expect in `src/languages/index.test.ts`, then run
-   `pnpm check`. A file that doesn't match the schema stops the server at startup and fails the
-   tests.
+   - `preambles` and `translationWords`: phrases a model may put before a translation into this
+     language, and the stem of its word for "translation".
+2. Import the file in `src/languages/index.ts` and add it to the list of files there. Every
+   language with a file is offered as a source.
+3. Add the tag to the language lists the tests expect in `src/languages/index.test.ts` and a row
+   for it in `src/languages/samples.test.ts`, then run `pnpm check`. A file that doesn't match the
+   schema stops the server at startup and fails the tests.
 
 A language without a file can still be a target; a file only adds checks for it there.

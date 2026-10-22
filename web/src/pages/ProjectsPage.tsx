@@ -82,6 +82,7 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
           description="The language of the books, and of the originals in your reference pairs."
           data={sources}
           value={source}
+          searchable
           allowDeselect={false}
           onChange={(v) => {
             if (!v) return;

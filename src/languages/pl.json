@@ -176,5 +176,6 @@
     "coś",
     "a"
   ],
-  "preambles": ["oto tłumaczenie", "oto przekład", "tłumaczenie:", "przekład:"]
+  "preambles": ["oto tłumaczenie", "oto przekład", "tłumaczenie:", "przekład:"],
+  "translationWords": ["tłumacz", "przekład"]
 }

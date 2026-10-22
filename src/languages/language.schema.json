@@ -15,7 +15,7 @@
       "description": "English article before the language's name: \"an English book\", \"a German book\"."
     },
     "keyArticles": {
-      "description": "Articles ignored at the start of names and terms when entries are matched. Keys of your own changes are stored with them, so changing the list changes which entries count as the same.",
+      "description": "Articles ignored at the start of names and terms when entries are matched. An article ending in an apostrophe (French l') may be joined to the word. Keys of your own changes are stored with them, so changing the list changes which entries count as the same.",
       "type": "array",
       "items": {
         "type": "string",
@@ -107,6 +107,14 @@
     },
     "preambles": {
       "description": "Phrases a model may start an answer with instead of the translation, in this language.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "translationWords": {
+      "description": "Stems of the word for \"translation\" (übersetz, tłumacz): an answer that starts like a preamble and mentions one is taken for a preamble.",
       "type": "array",
       "items": {
         "type": "string",

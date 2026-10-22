@@ -1,6 +1,6 @@
 import { stripPlaceholders, type TransUnit } from "../epub/blocks.ts";
 import { tokenize } from "../epub/splice.ts";
-import { languageData } from "../languages/index.ts";
+import { allLanguageData, languageData } from "../languages/index.ts";
 import { languageDisplayName, primarySubtag, scriptShare } from "../shared/languages.ts";
 
 /**
@@ -72,7 +72,14 @@ const HTML_TAG = /<\/?(i|b|em|strong|span|p|br|div|a|sup|sub|small|u|s)(\s[^>]*)
 const MALFORMED_PLACEHOLDER = /<\/?[gx]\s*\d*[^>]*$|<\/x\d+>|<x\d+>(?!\s*\/)|<g\d+\s*\/>/i;
 const MARKDOWN = /(\*\*[^*\n]+\*\*)|(^|\s)\*[^*\s][^*\n]*\*(?=\s|[.,;:!?]|$)|(^|\s)__[^_\n]+__/;
 const PREAMBLE = /^(here is|here's|sure[,!]|translation:|translated text:)/i;
-const TRANSLATION_WORD = /translat|übersetz|tłumacz|przekład/i;
+/** The word for "translation" in any language with a file: "translat", "übersetz", "tłumacz" … */
+const TRANSLATION_WORD = new RegExp(
+  allLanguageData()
+    .flatMap((d) => d.translationWords ?? [])
+    .map(escapeRegExp)
+    .join("|") || "translat",
+  "iu",
+);
 const QUOTES = /^["“”„«»‚‘’「『]/u;
 
 /**

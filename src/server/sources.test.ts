@@ -8,6 +8,7 @@ import {
   sampleGermanNovel,
   sampleNovel,
   sampleNovelTranslation,
+  sampleRussianNovel,
 } from "../testing/epub-fixtures.ts";
 import { type FakeHandler, type FakeServer, startFakeOpenAI } from "../testing/fake-openai.ts";
 import { translateReply } from "../testing/fake-translator.ts";
@@ -227,6 +228,26 @@ describe("a Polish source", () => {
   });
 });
 
+/** A knowledge base edit that adds an entry, as phase 2 returns it. */
+function add(kind: string, source: string, target: string) {
+  return {
+    op: "add",
+    id: null,
+    reason: "named in the chapter",
+    fields: {
+      kind,
+      source,
+      aliases: null,
+      target,
+      treatment: "translated",
+      attributes: null,
+      note: null,
+      status: null,
+      question: null,
+    },
+  };
+}
+
 describe("a German source", () => {
   it("guesses German front and back matter, keeps names in base form and finds them inflected", async () => {
     const asked: string[] = [];
@@ -237,22 +258,6 @@ describe("a German source", () => {
           return { content: JSON.stringify({ edits: [] }) };
         if (t.includes("You prepare a knowledge base")) {
           asked.push(t);
-          const add = (kind: string, source: string, target: string) => ({
-            op: "add",
-            id: null,
-            reason: "named in the chapter",
-            fields: {
-              kind,
-              source,
-              aliases: null,
-              target,
-              treatment: "translated",
-              attributes: null,
-              note: null,
-              status: null,
-              question: null,
-            },
-          });
           const chapter = t.slice(t.lastIndexOf("# Chapter:"));
           const edits = chapter.includes("Erstes Kapitel")
             ? [
@@ -298,6 +303,67 @@ describe("a German source", () => {
     // Entries a chapter names get that chapter as a ref, inflected forms included.
     const refs = Object.fromEntries(kb.entries.map((e) => [e.source, e.refs.length]));
     expect(refs).toEqual({ Orden: 2, Kapitän: 2, "Schwarzer Turm": 1, Anna: 1 });
+
+    await runJob(`${base}/phase3/run`);
+    expect(await builtLanguages(base)).toEqual(["pl"]);
+  });
+});
+
+describe("a Russian source", () => {
+  it("guesses Russian front and back matter and finds names in Cyrillic case forms", async () => {
+    const asked: string[] = [];
+    const pid = await project(
+      (body) => {
+        const t = text(body);
+        if (t.includes("You review a knowledge base"))
+          return { content: JSON.stringify({ edits: [] }) };
+        if (t.includes("You prepare a knowledge base")) {
+          asked.push(t);
+          const chapter = t.slice(t.lastIndexOf("# Chapter:"));
+          const edits = chapter.includes("Глава первая")
+            ? [
+                add("organization", "Орден", "Zakon"),
+                add("place", "Чёрная башня", "Czarna Wieża"),
+                add("person", "Анна", "Anna"),
+                add("person", "Капитан", "Kapitan"),
+              ]
+            : // Listed already; the order is only "Ордена" here.
+              [add("person", "Капитан", "Kapitan"), add("organization", "Орден", "Zakon")];
+          return { content: JSON.stringify({ synopsis: "Anna waits at the tower.", edits }) };
+        }
+        return translateReply(body);
+      },
+      "ru",
+      "pl",
+    );
+
+    const bookId = await addBook(pid, sampleRussianNovel());
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    const { structure } = await srv!.json<{ structure: EpubStructure }>("GET", base);
+    const guesses = Object.fromEntries(
+      structure.segmentsByDepth["1"]!.map((s) => [s.title, s.guess]),
+    );
+    expect(guesses).toEqual({
+      Содержание: "front",
+      "Глава первая": "body",
+      "Глава вторая": "body",
+      Благодарности: "back",
+    });
+
+    await readBodyChapters(base);
+    await runJob(`${base}/phase2/run`);
+    expect(asked[0]).toContain("translating a Russian novel into Polish");
+    expect(asked[0]).toContain("in their Russian base form");
+    const { kb } = await srv!.json<{ kb: Kb }>("GET", `${base}/kb`);
+    expect(kb.entries.map((e) => e.source).sort()).toEqual([
+      "Анна",
+      "Капитан",
+      "Орден",
+      "Чёрная башня",
+    ]);
+    // "Чёрная башня" is only in the text as "Чёрной башни" and "Чёрной башне".
+    const refs = Object.fromEntries(kb.entries.map((e) => [e.source, e.refs.length]));
+    expect(refs).toEqual({ Орден: 2, Капитан: 2, "Чёрная башня": 1, Анна: 1 });
 
     await runJob(`${base}/phase3/run`);
     expect(await builtLanguages(base)).toEqual(["pl"]);

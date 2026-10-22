@@ -49,6 +49,9 @@ describe("Polish names in running text", () => {
     expect(finds("Polska", "Wrócił do Polski, a potem był w Polsce.", pl)).toBe(true);
     expect(finds("Piotr", "Dała Piotrowi list; mówiła o Piotrze.", pl)).toBe(true);
     expect(finds("Michał", "Wszyscy czekali na Michała.", pl)).toBe(true);
+    // Short words of a longer name change too: "gór-y", "kul-e".
+    expect(finds("Biała Góra", "Wrócili spod Białej Góry.", pl)).toBe(true);
+    expect(finds("Biała Góra", "Wrócili spod Białej Wieży.", pl)).toBe(false);
   });
 
   it("doesn't match a different name", () => {

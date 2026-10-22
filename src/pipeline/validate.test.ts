@@ -69,6 +69,20 @@ describe("preambles", () => {
       [],
     );
   });
+
+  it("knows the word for translation in each language with a file", () => {
+    const source = "Sure, I'll come along tomorrow morning.";
+    const preambles: [string, string][] = [
+      ["es", "Aquí está la traducción\nClaro, iré contigo mañana por la mañana."],
+      ["ru", "Конечно, вот перевод\nКонечно, я приду завтра утром."],
+      ["cs", "Tady je překlad\nJasně, zítra ráno přijdu."],
+    ];
+    for (const [target, text] of preambles)
+      expect([target, check(source, text, ctx("en", target)).errors]).toEqual([target, [PREAMBLE]]);
+    // "Claro, …" and "Конечно, …" alone are just the translation.
+    expect(check(source, "Claro, iré contigo mañana.", ctx("en", "es")).errors).toEqual([]);
+    expect(check(source, "Конечно, я приду завтра утром.", ctx("en", "ru")).errors).toEqual([]);
+  });
 });
 
 describe("leftovers in the source language", () => {
@@ -145,5 +159,13 @@ describe("leftovers in the source language", () => {
       const r = check(source, text, ctx(from, to));
       expect([from, to, r.errors, r.warnings]).toEqual([from, to, [], []]);
     }
+  });
+
+  it("tells close languages apart, and still notices the source", () => {
+    const czech = "Nebyla už ve městě a on nevěděl, kde teď bydlí, tak čekal a nic neříkal.";
+    const slovak = "Nebola už v meste a on nevedel, kde teraz býva, tak čakal a nič nehovoril.";
+    expect(check(czech, slovak, ctx("cs", "sk")).warnings).toEqual([]);
+    const leftover = "Nebyla už ve městě a on nevěděl, kde teď bydlí, tak čekal a nic neřekl.";
+    expect(check(czech, leftover, ctx("cs", "sk")).warnings).toEqual([warning("Czech")]);
   });
 });

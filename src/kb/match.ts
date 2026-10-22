@@ -50,11 +50,15 @@ export function wordForms(word: string, data: LanguageData, minStem: number): st
   return [...forms];
 }
 
-/** The words of a term with their forms. A one-word name may lose more of its stem. */
+/**
+ * The words of a term with their forms. A one-word name, or a word of a longer
+ * term (whose words must all follow each other), may lose more of its stem:
+ * "Crna kula" is found as "Crne kule", "Biała Góra" as "Białej Góry".
+ */
 function termWords(term: string, data: LanguageData): string[][] {
   const words = term.trim().split(/\s+/).filter(Boolean);
-  const name = words.length === 1 && /^\p{Lu}/u.test(words[0]!);
-  return words.map((w) => wordForms(w, data, name ? 3 : 4));
+  const loose = words.length > 1 || /^\p{Lu}/u.test(words[0] ?? "");
+  return words.map((w) => wordForms(w, data, loose ? 3 : 4));
 }
 
 function escapeRegExp(s: string): string {

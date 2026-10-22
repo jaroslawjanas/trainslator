@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceLanguage } from "../languages/index.ts";
+import { SOURCE_LANGUAGES, type SourceLanguage, sourceLanguage } from "../languages/index.ts";
 import type { PromptBlock } from "../llm/request.ts";
 import { toStrictJsonSchema } from "../llm/structured.ts";
 import { alignBlocks, alignOutputFor } from "../prompts/alignment.ts";
@@ -27,56 +27,75 @@ const segment = (i: number, title: string): Segment => ({
   guess: "body",
 });
 
+/** Every prompt and schema that names the source language. */
+function sourcePrompts(source: SourceLanguage): string {
+  return [
+    show(
+      readBlocks({
+        source,
+        targetName: "English",
+        languageNotes: "",
+        sourceText: "…",
+        targetText: "…",
+        part: { index: 0, count: 2 },
+      }),
+    ),
+    mergeSystem(source, "English", ""),
+    show(styleBlocks(source, "English", "", "- notes")),
+    show(
+      chapterBlocks({
+        source,
+        targetName: "English",
+        languageNotes: "",
+        referenceKb: null,
+        synopses: [],
+        bookKb: "",
+        chapterTitle: "1",
+        chapterText: "…",
+        part: null,
+      }),
+    ),
+    show(
+      reviewBlocks({
+        source,
+        targetName: "English",
+        languageNotes: "",
+        referenceKb: null,
+        synopses: [],
+        bookKb: "",
+        focus: "…",
+      }),
+    ),
+    show(alignBlocks(source, "English", [segment(0, "1")], [segment(0, "1")])),
+    show(languageNotesBlocks(source, "English", "en")),
+    phase3System(source.name, "English", "en", "", true),
+    JSON.stringify(toStrictJsonSchema(readOutputFor(source)), null, 2),
+    JSON.stringify(toStrictJsonSchema(alignOutputFor(source)), null, 2),
+  ].join("\n\n");
+}
+
 describe.each(["de", "pl"])("prompts for a %s source", (tag) => {
   const source = sourceLanguage(tag);
   const golden = (name: string) => `./__golden__/${tag}/${name}.txt`;
 
   it("name the source language and ask for base forms", async () => {
-    const text = [
-      show(
-        readBlocks({
-          source,
-          targetName: "English",
-          languageNotes: "",
-          sourceText: "…",
-          targetText: "…",
-          part: { index: 0, count: 2 },
-        }),
-      ),
-      mergeSystem(source, "English", ""),
-      show(styleBlocks(source, "English", "", "- notes")),
-      show(
-        chapterBlocks({
-          source,
-          targetName: "English",
-          languageNotes: "",
-          referenceKb: null,
-          synopses: [],
-          bookKb: "",
-          chapterTitle: "1",
-          chapterText: "…",
-          part: null,
-        }),
-      ),
-      show(
-        reviewBlocks({
-          source,
-          targetName: "English",
-          languageNotes: "",
-          referenceKb: null,
-          synopses: [],
-          bookKb: "",
-          focus: "…",
-        }),
-      ),
-      show(alignBlocks(source, "English", [segment(0, "1")], [segment(0, "1")])),
-      show(languageNotesBlocks(source, "English", "en")),
-      phase3System(source.name, "English", "en", "", true),
-      JSON.stringify(toStrictJsonSchema(readOutputFor(source)), null, 2),
-      JSON.stringify(toStrictJsonSchema(alignOutputFor(source)), null, 2),
-    ].join("\n\n");
+    const text = sourcePrompts(source);
     expect(text).not.toContain("English novel");
     expect(text).toContain(`${source.name} base form`);
     await expect(`${text}\n`).toMatchFileSnapshot(golden("prompts"));
   });
 });
+
+// The other sources get the same prompts with their own name (no snapshot each).
+describe.each(SOURCE_LANGUAGES.filter((t) => !["en", "de", "pl"].includes(t)))(
+  "prompts for a %s source",
+  (tag) => {
+    it("name the source language and ask for base forms", () => {
+      const source = sourceLanguage(tag);
+      const text = sourcePrompts(source);
+      expect(text).not.toContain("English novel");
+      expect(text).toContain(`${source.article} ${source.name} novel`);
+      expect(text).toContain(`${source.name} base form`);
+    });
+  },
+);

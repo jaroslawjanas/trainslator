@@ -77,15 +77,16 @@ you can compare and restore.
    travels as placeholders and every answer is checked. You then review the result, side by side
    with the original and with earlier versions, and build the EPUB.
 
-Books can be translated from English, German or Polish into any language. This guide's examples
-translate an English book into Polish; with another source, the app names that language wherever
-the guide says English (see [section 6](#6-projects-and-language-notes)).
+Books can be translated from 25 languages (English, most European languages, Indonesian, Malay
+and Filipino; the README lists them) into any language. This guide's examples translate an English
+book into Polish; with another source, the app names that language wherever the guide says English
+(see [section 6](#6-projects-and-language-notes)).
 
 ### Words used in this guide and in the app
 
 | Term | Meaning |
 |---|---|
-| Project | Translates books from one source language (English, German or Polish) into one target language. Holds its reference pairs, books, language notes and usage. |
+| Project | Translates books from one source language (one of the 25 the app supports) into one target language. Holds its reference pairs, books, language notes and usage. |
 | Reference pair | A book in the source language and its published translation into the project's language, used only for learning (phase 1). |
 | Book | The EPUB in the source language you want translated. |
 | Knowledge base | A list of entries (names, places, terms, phrases, wordplay) with their translations, facts such as gender, notes and examples, plus numbered style rules. Each pair and each book has one. |
@@ -462,20 +463,21 @@ The advisor's usage has its own row on the Usage page.
 ### Creating a project
 
 On **All projects**, press **New project**. Give it a **Name** (for example "Fantasy series into
-Polish"), choose **Translate from** (English, German or Polish) and **Translate into**. You can
-search target languages by name or type any language code such as `pl`, `pt-BR` or `zh-Hant`. The
-app works out the target language's script and writing direction itself. Both languages are fixed
-once the project exists; **Project settings** shows them.
+Polish"), choose **Translate from** (one of 25 languages; type to search) and **Translate into**.
+You can search target languages by name or type any language code such as `pl`, `pt-BR` or
+`zh-Hant`. The app works out the target language's script and writing direction itself. Both
+languages are fixed once the project exists; **Project settings** shows them.
 
-This guide's examples translate an English book into Polish. In a project with a German or Polish
-source, the app says German or Polish wherever this guide says English: in column headings, in
-**Review**, in the build report. The instructions to the AI and its own notes (synopses, entry
-notes, questions) are in English whatever the source.
+This guide's examples translate an English book into Polish. In a project with another source,
+the app names that language wherever this guide says English: in column headings, in **Review**,
+in the build report. The instructions to the AI and its own notes (synopses, entry notes,
+questions) are in English whatever the source.
 
-With a German or Polish source, names and terms change form in the text: *des Ordens* for *Orden*,
-*Krakowa* for *Kraków*. The AI is asked to list them in their base form (nominative, without an
-article), and the app finds an entry in any of its forms when it counts the chapters an entry
-appears in and when it picks the reference entries a book needs (**Only entries in this book**).
+With a source other than English, the AI is asked to list names and terms in their base form
+(nominative, without an article). Many of these languages change names and terms in the text:
+*des Ordens* for *Orden*, *Krakowa* for *Kraków*, *v Praze* for *Praha*, *у Петра* for *Пётр*.
+The app finds an entry in any of its forms when it counts the chapters an entry appears in and
+when it picks the reference entries a book needs (**Only entries in this book**).
 When a book or pair is imported, the app also warns if an EPUB says it's in a different language
 than the one it's used as.
 
@@ -635,7 +637,7 @@ is your target language:
 | Field | Meaning |
 |---|---|
 | **Kind, Treatment** | What it is, and how the translation handles it. |
-| **Name or term** | As it appears in the source text; for German and Polish in its base form (nominative, without an article). |
+| **Name or term** | As it appears in the source text; for sources other than English in its base form (nominative, without an article). |
 | **Also written as** | Other spellings or short forms in the source language, such as a nickname. |
 | **Translation** | Its dictionary form in the target language: the form a dictionary would list. |
 | **Other forms in (target language)** | Inflected forms and variants that appear in the translated text, for example *Ady, Adzie, Adę* for *Ada*. |

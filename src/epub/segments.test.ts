@@ -172,12 +172,12 @@ describe("front and back matter in other languages", () => {
   });
 
   it("guesses by position and size only for languages without a file", () => {
-    const book = bookWith("fr", [
-      ["Table des matières", 400],
-      ["Chapitre un", 1500],
-      ["Remerciements", 400],
+    const book = bookWith("fi", [
+      ["Sisällys", 400],
+      ["Ensimmäinen luku", 1500],
+      ["Kiitokset", 400],
     ]);
-    const guesses = buildSegments(book, "fr").segmentsByDepth["1"]!.map((s) => s.guess);
+    const guesses = buildSegments(book, "fi").segmentsByDepth["1"]!.map((s) => s.guess);
     expect(guesses).toEqual(["body", "body", "body"]);
   });
 });

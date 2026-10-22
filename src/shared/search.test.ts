@@ -22,6 +22,16 @@ describe("search", () => {
     expect(findMatches("Café x", "cafe")).toEqual([{ start: 0, end: 5 }]);
   });
 
+  it("counts ø, đ, æ and œ as o, d, ae and oe", () => {
+    const slices = (text: string, q: string) =>
+      findMatches(text, q).map((m) => text.slice(m.start, m.end));
+    expect(slices("Søren og SØREN", "soren")).toEqual(["Søren", "SØREN"]);
+    expect(slices("Đakovo", "dakovo")).toEqual(["Đakovo"]);
+    expect(slices("Ærø og hæren", "aero")).toEqual(["Ærø"]);
+    expect(slices("Le cœur et l'ŒUVRE", "coeur")).toEqual(["cœur"]);
+    expect(slices("Le cœur et l'ŒUVRE", "oeuvre")).toEqual(["ŒUVRE"]);
+  });
+
   it("finds nothing for an empty query", () => {
     expect(findMatches("anything", "  ")).toEqual([]);
   });

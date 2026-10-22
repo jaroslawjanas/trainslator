@@ -32,7 +32,9 @@ import {
   sampleGermanNovel,
   sampleNovel,
   sampleNovelTranslation,
+  sampleRussianNovel,
 } from "../src/testing/epub-fixtures.ts";
+import { SAMPLE_NOVELS, sampleNovelIn } from "../src/testing/sample-novels.ts";
 
 const { values } = parseArgs({
   options: {
@@ -60,6 +62,10 @@ const SAMPLES: Record<string, { book: () => Uint8Array; translation?: () => Uint
   en: { book: sampleNovel, translation: sampleNovelTranslation },
   pl: { book: sampleNovelTranslation, translation: sampleNovel },
   de: { book: sampleGermanNovel },
+  ru: { book: sampleRussianNovel },
+  ...Object.fromEntries(
+    Object.keys(SAMPLE_NOVELS).map((tag) => [tag, { book: () => sampleNovelIn(tag) }]),
+  ),
 };
 const sample = SAMPLES[values.source ?? "en"];
 if (!sample) {
@@ -222,6 +228,7 @@ const bookId = await step("book and phase 2", async () => {
   const base = `/api/projects/${pid}/books/${book.id}`;
   const detail = await api<{ structure: EpubStructure; setup: BookSetup }>("GET", base);
   const body = detail.structure.segmentsByDepth[String(detail.setup.tocDepth)] ?? [];
+  console.log(`\n    guesses: ${body.map((s) => `${s.title} (${s.guess})`).join(", ")}`);
   await api("PUT", `${base}/setup`, {
     ...detail.setup,
     phase2Segments: body.filter((s) => s.linear && s.guess === "body").map((s) => s.id),
@@ -229,7 +236,9 @@ const bookId = await step("book and phase 2", async () => {
   await runJob(`${base}/phase2/run`);
   const { kb } = await api<{ kb: Kb }>("GET", `/api/projects/${pid}/books/${book.id}/kb`);
   const open = kb.entries.filter((e) => e.status === "open").length;
-  console.log(`\n    ${kb.entries.length} entries (${open} open questions)`);
+  console.log(`    ${kb.entries.length} entries (${open} open questions)`);
+  // Each entry with the number of chapters it was found in (inflected forms count).
+  console.log(`    ${kb.entries.map((e) => `${e.source} [${e.refs.length}]`).join(", ")}`);
   return book.id;
 });
 

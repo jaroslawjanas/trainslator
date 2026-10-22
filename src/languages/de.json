@@ -164,5 +164,6 @@
     "immer",
     "nie"
   ],
-  "preambles": ["hier ist", "hier die übersetzung", "übersetzung:"]
+  "preambles": ["hier ist", "hier die übersetzung", "übersetzung:"],
+  "translationWords": ["übersetz"]
 }
