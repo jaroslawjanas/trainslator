@@ -91,6 +91,15 @@ export const BOOK_STAGES: StageDef[] = [
   { key: "history", label: "History", mark: () => "neutral" },
 ];
 
+/** The pair's knowledge base was learned before one of its books was replaced. */
+export function learnedBeforeReplace(pair: {
+  phase1: { entries: number | null; finishedAt: string | null };
+  filesChangedAt: string | null;
+}): boolean {
+  if (!pair.filesChangedAt || pair.phase1.entries === null) return false;
+  return !pair.phase1.finishedAt || pair.phase1.finishedAt < pair.filesChangedAt;
+}
+
 export const PAIR_STAGES: StageDef[] = [
   {
     key: "alignment",
@@ -103,7 +112,9 @@ export const PAIR_STAGES: StageDef[] = [
     mark: (c) =>
       c.pair && running(c, c.pair.id, ["phase1"])
         ? "running"
-        : phaseMark(c.pair?.phase1.state ?? "none"),
+        : c.pair && learnedBeforeReplace(c.pair)
+          ? "warning"
+          : phaseMark(c.pair?.phase1.state ?? "none"),
   },
   { key: "kb", label: "Knowledge base", mark: () => "neutral" },
 ];

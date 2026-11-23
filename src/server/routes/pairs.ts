@@ -7,9 +7,10 @@ import {
   importPair,
   loadAlignment,
   pairDetail,
+  pairText,
+  replacePairFile,
   reproposeAlignment,
   saveAlignment,
-  unitPreview,
 } from "../../services/pairs.ts";
 import { Alignment } from "../../shared/schemas/alignment.ts";
 import type { AppContext } from "../context.ts";
@@ -87,9 +88,33 @@ export function pairRoutes(app: AppContext): Hono {
     return c.json({ alignment });
   });
 
-  r.get("/:pid/pairs/:pairId/units/:uid/preview", async (c) =>
-    c.json(await unitPreview(app, idParam(c, "pid"), idParam(c, "pairId"), idParam(c, "uid"))),
-  );
+  // Chapters of both books, read side by side: ?source=d1s3,d1s4&target=d1s3
+  r.get("/:pid/pairs/:pairId/text", async (c) => {
+    const ids = (name: string) =>
+      (c.req.query(name) ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 500);
+    const chapters = { source: ids("source"), target: ids("target") };
+    if (chapters.source.length + chapters.target.length === 0)
+      throw new HttpError(400, "no_chapters", "Choose the chapters to read.");
+    return c.json(await pairText(app, idParam(c, "pid"), idParam(c, "pairId"), chapters));
+  });
+
+  r.post("/:pid/pairs/:pairId/files/:side", async (c) => {
+    const pid = idParam(c, "pid");
+    const pairId = idParam(c, "pairId");
+    const side = z.enum(["source", "target"]).safeParse(c.req.param("side"));
+    if (!side.success) throw new HttpError(404, "not_found", "Not found.");
+    if (app.runner.activeFor(pairId))
+      throw new HttpError(409, "busy", "A job is running for this pair.");
+    const form = await c.req.parseBody();
+    const pair = await replacePairFile(app, pid, pairId, side.data, await fileField(form, "file"));
+    app.events.changed(pid, "pairs", pairId);
+    app.events.changed(pid, "alignment", pairId);
+    return c.json({ pair });
+  });
 
   r.get("/:pid/pairs/:pairId/phase1/chapters", async (c) =>
     c.json(await phase1Chapters(app, idParam(c, "pid"), idParam(c, "pairId"))),

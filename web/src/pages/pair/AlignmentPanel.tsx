@@ -1,16 +1,12 @@
 import {
   ActionIcon,
-  Alert,
   Box,
   Button,
   Checkbox,
   Group,
   Menu,
-  Modal,
-  Paper,
-  ScrollArea,
+  SegmentedControl,
   Select,
-  SimpleGrid,
   Stack,
   Table,
   Text,
@@ -19,12 +15,12 @@ import {
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconArrowDown, IconArrowUp, IconChevronDown, IconDots } from "@tabler/icons-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useSearchParams } from "react-router";
 import type { Alignment, AlignUnit } from "../../../../src/shared/schemas/alignment.ts";
 import type { EpubStructure, Segment } from "../../../../src/shared/schemas/epub.ts";
-import { del, get, post, put } from "../../api/client.ts";
+import { post, put } from "../../api/client.ts";
 import { DiagnosticsList } from "../../components/DiagnosticsList.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { StageMark } from "../../components/StageMark.tsx";
@@ -38,6 +34,7 @@ import {
   splitLast,
   unlink,
 } from "./alignOps.ts";
+import { PairReader, relativeLength } from "./PairReader.tsx";
 
 export interface PairDetail {
   pair: {
@@ -48,16 +45,13 @@ export interface PairDetail {
     phase1: { state: string; finishedAt: string | null; entries: number | null };
     /** Set when the pair was made from a finished book. */
     fromBook: { bookId: string; title: string; madeAt: string } | null;
+    /** When one of the two EPUBs was last replaced. */
+    filesChangedAt: string | null;
   };
   source: EpubStructure;
   target: EpubStructure;
   alignment: Alignment;
   ratio: number;
-}
-
-interface Preview {
-  source: { titles: string[]; words: number; start: string; end: string; truncated: boolean };
-  target: { titles: string[]; words: number; start: string; end: string; truncated: boolean };
 }
 
 function segmentsAt(structure: EpubStructure, depth: number): Segment[] {
@@ -139,74 +133,13 @@ function SegmentList({
   );
 }
 
-function PreviewModal({
-  pid,
-  pairId,
-  unitId,
-  onClose,
-}: {
-  pid: string;
-  pairId: string;
-  unitId: string | null;
-  onClose: () => void;
-}) {
-  const source = useSourceName(pid);
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["preview", pairId, unitId],
-    queryFn: () => get<Preview>(`/api/projects/${pid}/pairs/${pairId}/units/${unitId}/preview`),
-    enabled: unitId !== null,
-  });
-  const side = (title: string, p: Preview["source"]) => (
-    <Stack gap="xs">
-      <Text fw={600}>{title}</Text>
-      <Text size="xs" c="dimmed">
-        {p.titles.map(displayTitle).join(" + ") || "nothing on this side"},{" "}
-        {p.words.toLocaleString()} words
-      </Text>
-      <Paper withBorder p="sm">
-        <ScrollArea h={260}>
-          <Text size="md" className="serif" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-            {p.start}
-          </Text>
-        </ScrollArea>
-      </Paper>
-      {p.end && (
-        <>
-          <Text size="xs" c="dimmed">
-            {p.truncated ? "… end:" : "continued:"}
-          </Text>
-          <Paper withBorder p="sm">
-            <ScrollArea h={160}>
-              <Text size="md" className="serif" style={{ whiteSpace: "pre-wrap", lineHeight: 1.6 }}>
-                {p.end}
-              </Text>
-            </ScrollArea>
-          </Paper>
-        </>
-      )}
-    </Stack>
-  );
-  return (
-    <Modal opened={unitId !== null} onClose={onClose} title="Compare the two sides" size="90%">
-      {isLoading && <Text>Loading…</Text>}
-      {error && <Alert color="red">{(error as Error).message}</Alert>}
-      {data && (
-        <SimpleGrid cols={2}>
-          {side(source, data.source)}
-          {side("Translation", data.target)}
-        </SimpleGrid>
-      )}
-    </Modal>
-  );
-}
-
 export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetail }) {
   const source = useSourceName(pid);
   const client = useQueryClient();
-  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const reading = params.get("view") === "read";
   const diagnostics = [...detail.source.diagnostics, ...detail.target.diagnostics];
   const [units, setUnits] = useState<AlignUnit[]>(detail.alignment.units);
-  const [preview, setPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [asking, setAsking] = useState(false);
   useEffect(() => setUnits(detail.alignment.units), [detail.alignment]);
@@ -221,9 +154,12 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
     [detail.target, al.tocDepthTarget],
   );
   const dirty = JSON.stringify(units) !== JSON.stringify(al.units);
-  const words = (ids: string[], map: Map<string, Segment>) =>
-    ids.reduce((s, id) => s + (map.get(id)?.words ?? 0), 0);
   const included = units.filter((u) => u.include);
+  /** Shows a row side by side; with no row, the first used one. */
+  const read = (rowId?: string) => {
+    const row = rowId ?? units.find((u) => u.include)?.id ?? units[0]?.id;
+    setParams(row ? { view: "read", row } : { view: "read" });
+  };
 
   const save = async (status: Alignment["status"]) => {
     setSaving(true);
@@ -274,53 +210,69 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
         ? "Unsaved changes"
         : "Not confirmed yet";
 
+  const views = (
+    <SegmentedControl
+      value={reading ? "read" : "table"}
+      onChange={(v) => (v === "read" ? read(params.get("row") ?? undefined) : setParams({}))}
+      data={[
+        { value: "table", label: "Table" },
+        { value: "read", label: "Side by side" },
+      ]}
+    />
+  );
+
   return (
     <Stack gap="lg">
       <Group justify="space-between" align="flex-end" gap="md">
-        <Group align="flex-end" gap="sm">
-          <Select
-            label={`${source} chapters`}
-            w={190}
-            data={depthOptions(detail.source.maxDepth)}
-            value={String(al.tocDepthSource)}
-            allowDeselect={false}
-            onChange={(v) => v && repropose(Number(v), al.tocDepthTarget)}
-          />
-          <Select
-            label="Translated chapters"
-            w={190}
-            data={depthOptions(detail.target.maxDepth)}
-            value={String(al.tocDepthTarget)}
-            allowDeselect={false}
-            onChange={(v) => v && repropose(al.tocDepthSource, Number(v))}
-          />
-          <Menu position="bottom-start" width={320}>
-            <Menu.Target>
-              <Button
-                variant="default"
-                loading={asking}
-                rightSection={<IconChevronDown size={14} />}
-              >
-                Propose again
-              </Button>
-            </Menu.Target>
-            <Menu.Dropdown>
-              <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget)}>
-                <Text size="sm">By chapter length</Text>
-                <Text size="xs" c="dimmed">
-                  Instant, no AI. Works when both books have the same contents.
-                </Text>
-              </Menu.Item>
-              <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget, true)}>
-                <Text size="sm">With AI</Text>
-                <Text size="xs" c="dimmed">
-                  Matches titles and opening lines. Better when the books differ (extra stories,
-                  notes, a licence). One short request.
-                </Text>
-              </Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        </Group>
+        {reading ? (
+          views
+        ) : (
+          <Group align="flex-end" gap="sm">
+            {views}
+            <Select
+              label={`${source} chapters`}
+              w={190}
+              data={depthOptions(detail.source.maxDepth)}
+              value={String(al.tocDepthSource)}
+              allowDeselect={false}
+              onChange={(v) => v && repropose(Number(v), al.tocDepthTarget)}
+            />
+            <Select
+              label="Translated chapters"
+              w={190}
+              data={depthOptions(detail.target.maxDepth)}
+              value={String(al.tocDepthTarget)}
+              allowDeselect={false}
+              onChange={(v) => v && repropose(al.tocDepthSource, Number(v))}
+            />
+            <Menu position="bottom-start" width={320}>
+              <Menu.Target>
+                <Button
+                  variant="default"
+                  loading={asking}
+                  rightSection={<IconChevronDown size={14} />}
+                >
+                  Propose again
+                </Button>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget)}>
+                  <Text size="sm">By chapter length</Text>
+                  <Text size="xs" c="dimmed">
+                    Instant, no AI. Works when both books have the same contents.
+                  </Text>
+                </Menu.Item>
+                <Menu.Item onClick={() => repropose(al.tocDepthSource, al.tocDepthTarget, true)}>
+                  <Text size="sm">With AI</Text>
+                  <Text size="xs" c="dimmed">
+                    Matches titles and opening lines. Better when the books differ (extra stories,
+                    notes, a licence). One short request.
+                  </Text>
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
+        )}
         <Group gap="xs">
           <Group gap={6} mr="xs">
             <StageMark state={al.status === "confirmed" && !dirty ? "done" : "none"} />
@@ -353,157 +305,139 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
           )}
         </Group>
       </Group>
-      <Text size="sm" c="dimmed">
-        {included.length} of {units.length} rows are used for learning. The translation is about{" "}
-        {detail.ratio.toFixed(2)} times as long as the {source}; the length column compares each row
-        with that.
-      </Text>
-      <Table highlightOnHover verticalSpacing="sm">
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th w={44}>Use</Table.Th>
-            <Table.Th>{source}</Table.Th>
-            <Table.Th>Translation</Table.Th>
-            <Table.Th w={110}>Length</Table.Th>
-            <Table.Th w={60} />
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {units.map((u, i) => {
-            const wa = words(u.source, sourceSegs);
-            const wb = words(u.target, targetSegs);
-            const rel = wa > 0 && wb > 0 ? wb / detail.ratio / wa : null;
-            const color =
-              rel === null
-                ? "dimmed"
-                : rel > 0.75 && rel < 1.33
-                  ? undefined
-                  : rel > 0.5 && rel < 2
-                    ? "yellow"
-                    : "red";
-            return (
-              <Table.Tr key={u.id} opacity={u.include ? 1 : 0.6}>
-                <Table.Td>
-                  <Checkbox
-                    checked={u.include}
-                    onChange={(e) => setUnits(setInclude(units, i, e.currentTarget.checked))}
-                    aria-label="Include"
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <SegmentList
-                    ids={u.source}
-                    segments={sourceSegs}
-                    canUp={i > 0}
-                    canDown
-                    onUp={() => setUnits(moveFirstToPrevious(units, i, "source"))}
-                    onDown={() => setUnits(moveLastToNext(units, i, "source"))}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <SegmentList
-                    ids={u.target}
-                    segments={targetSegs}
-                    canUp={i > 0}
-                    canDown
-                    onUp={() => setUnits(moveFirstToPrevious(units, i, "target"))}
-                    onDown={() => setUnits(moveLastToNext(units, i, "target"))}
-                  />
-                </Table.Td>
-                <Table.Td>
-                  <UnstyledButton onClick={() => setPreview(u.id)} aria-label="Compare the text">
-                    <Text
-                      size="sm"
-                      c={color}
-                      className="num"
-                      td="underline"
-                      style={{
-                        textDecorationColor: "var(--tr-rule-strong)",
-                        textUnderlineOffset: 3,
-                      }}
-                    >
-                      {rel === null ? "one side" : `${Math.round(rel * 100)}%`}
-                    </Text>
-                  </UnstyledButton>
-                  {u.confidence !== null && (
-                    <Text size="xs" c="dimmed">
-                      {Math.round(u.confidence * 100)}% sure
-                    </Text>
-                  )}
-                </Table.Td>
-                <Table.Td>
-                  <Menu position="bottom-end" withinPortal>
-                    <Menu.Target>
-                      <ActionIcon variant="subtle" color="gray" aria-label="Row actions">
-                        <IconDots size={16} />
-                      </ActionIcon>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item onClick={() => setPreview(u.id)}>Compare text</Menu.Item>
-                      <Menu.Item
-                        disabled={i + 1 >= units.length}
-                        onClick={() => setUnits(mergeWithNext(units, i))}
-                      >
-                        Merge with next row
-                      </Menu.Item>
-                      <Menu.Item
-                        disabled={u.source.length < 2 && u.target.length < 2}
-                        onClick={() => setUnits(splitLast(units, i))}
-                      >
-                        Split off the last chapter
-                      </Menu.Item>
-                      <Menu.Item
-                        disabled={u.source.length === 0 || u.target.length === 0}
-                        onClick={() => setUnits(unlink(units, i))}
-                      >
-                        Unlink the two sides
-                      </Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
-                </Table.Td>
+      {reading ? (
+        <PairReader
+          pid={pid}
+          pairId={detail.pair.id}
+          units={units}
+          sourceSegs={sourceSegs}
+          targetSegs={targetSegs}
+          ratio={detail.ratio}
+          rowId={params.get("row")}
+          onRow={(row) => setParams({ view: "read", row }, { replace: true })}
+        />
+      ) : (
+        <>
+          <Text size="sm" c="dimmed">
+            {included.length} of {units.length} rows are used for learning. The translation is about{" "}
+            {detail.ratio.toFixed(2)} times as long as the {source}; the length column compares each
+            row with that. Click a row's length to read the two sides next to each other.
+          </Text>
+          <Table highlightOnHover verticalSpacing="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w={44}>Use</Table.Th>
+                <Table.Th>{source}</Table.Th>
+                <Table.Th>Translation</Table.Th>
+                <Table.Th w={110}>Length</Table.Th>
+                <Table.Th w={60} />
               </Table.Tr>
-            );
-          })}
-        </Table.Tbody>
-      </Table>
-      <PreviewModal
-        pid={pid}
-        pairId={detail.pair.id}
-        unitId={preview}
-        onClose={() => setPreview(null)}
-      />
-      <Box mt={48}>
-        {diagnostics.length > 0 && (
-          <Section title="Notes about the files">
-            <DiagnosticsList diagnostics={diagnostics} />
-          </Section>
-        )}
-        <Section
-          title="Delete this pair"
-          description="Deletes the two books and what was learned from them. Books that used this pair keep their own knowledge bases."
-        >
-          <Button
-            color="red"
-            variant="outline"
-            onClick={async () => {
-              if (!window.confirm("Delete this reference pair and its knowledge base?")) return;
-              try {
-                await del(`/api/projects/${pid}/pairs/${detail.pair.id}`);
-                await client.invalidateQueries({ queryKey: ["project", pid] });
-                navigate(`/projects/${pid}`);
-              } catch (e) {
-                notifications.show({
-                  color: "red",
-                  title: "Couldn't delete",
-                  message: (e as Error).message,
-                });
-              }
-            }}
-          >
-            Delete pair
-          </Button>
-        </Section>
-      </Box>
+            </Table.Thead>
+            <Table.Tbody>
+              {units.map((u, i) => {
+                const rel = relativeLength(u, sourceSegs, targetSegs, detail.ratio);
+                const color =
+                  rel === null
+                    ? "dimmed"
+                    : rel > 0.75 && rel < 1.33
+                      ? undefined
+                      : rel > 0.5 && rel < 2
+                        ? "yellow"
+                        : "red";
+                return (
+                  <Table.Tr key={u.id} opacity={u.include ? 1 : 0.6}>
+                    <Table.Td>
+                      <Checkbox
+                        checked={u.include}
+                        onChange={(e) => setUnits(setInclude(units, i, e.currentTarget.checked))}
+                        aria-label="Include"
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <SegmentList
+                        ids={u.source}
+                        segments={sourceSegs}
+                        canUp={i > 0}
+                        canDown
+                        onUp={() => setUnits(moveFirstToPrevious(units, i, "source"))}
+                        onDown={() => setUnits(moveLastToNext(units, i, "source"))}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <SegmentList
+                        ids={u.target}
+                        segments={targetSegs}
+                        canUp={i > 0}
+                        canDown
+                        onUp={() => setUnits(moveFirstToPrevious(units, i, "target"))}
+                        onDown={() => setUnits(moveLastToNext(units, i, "target"))}
+                      />
+                    </Table.Td>
+                    <Table.Td>
+                      <UnstyledButton onClick={() => read(u.id)} aria-label="Read side by side">
+                        <Text
+                          size="sm"
+                          c={color}
+                          className="num"
+                          td="underline"
+                          style={{
+                            textDecorationColor: "var(--tr-rule-strong)",
+                            textUnderlineOffset: 3,
+                          }}
+                        >
+                          {rel === null ? "one side" : `${Math.round(rel * 100)}%`}
+                        </Text>
+                      </UnstyledButton>
+                      {u.confidence !== null && (
+                        <Text size="xs" c="dimmed">
+                          {Math.round(u.confidence * 100)}% sure
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Menu position="bottom-end" withinPortal>
+                        <Menu.Target>
+                          <ActionIcon variant="subtle" color="gray" aria-label="Row actions">
+                            <IconDots size={16} />
+                          </ActionIcon>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item onClick={() => read(u.id)}>Read side by side</Menu.Item>
+                          <Menu.Item
+                            disabled={i + 1 >= units.length}
+                            onClick={() => setUnits(mergeWithNext(units, i))}
+                          >
+                            Merge with next row
+                          </Menu.Item>
+                          <Menu.Item
+                            disabled={u.source.length < 2 && u.target.length < 2}
+                            onClick={() => setUnits(splitLast(units, i))}
+                          >
+                            Split off the last chapter
+                          </Menu.Item>
+                          <Menu.Item
+                            disabled={u.source.length === 0 || u.target.length === 0}
+                            onClick={() => setUnits(unlink(units, i))}
+                          >
+                            Unlink the two sides
+                          </Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+          {diagnostics.length > 0 && (
+            <Box mt={48}>
+              <Section title="Notes about the files">
+                <DiagnosticsList diagnostics={diagnostics} />
+              </Section>
+            </Box>
+          )}
+        </>
+      )}
     </Stack>
   );
 }

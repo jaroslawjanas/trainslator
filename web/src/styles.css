@@ -497,6 +497,58 @@ a.tr-context:hover {
   opacity: 1;
 }
 
+/* A reference pair side by side: each cell holds the passages lined up with the other side. */
+.tr-read-row {
+  padding-bottom: 1.05em;
+}
+
+.tr-read-passage + .tr-read-passage {
+  margin-top: 0.6em;
+}
+
+.tr-read-passage[data-role="heading"] .tr-page-text {
+  font-size: 1.3125rem;
+  line-height: 1.35;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variation-settings: "opsz" 24;
+  padding-top: 0.6em;
+}
+
+.tr-read-passage[data-role="list-item"] .tr-page-text {
+  padding-left: 1.2em;
+  text-indent: -0.9em;
+}
+
+.tr-read-passage[data-role="list-item"] .tr-page-text::before {
+  content: "• ";
+  color: var(--tr-faint);
+}
+
+.tr-read-passage[data-role="caption"] .tr-page-text,
+.tr-read-passage[data-role="table-cell"] .tr-page-text,
+.tr-read-passage[data-note] .tr-page-text {
+  font-size: 0.9375rem;
+  color: var(--tr-graphite);
+}
+
+.tr-read-passage[data-role="break"] .tr-page-text {
+  text-align: center;
+  color: var(--tr-faint);
+}
+
+.tr-read-passage[data-role="preformatted"] .tr-page-text {
+  white-space: pre-wrap;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 0.875rem;
+}
+
+/* A passage with no partner: the empty side shows a faint dash. */
+.tr-read-none {
+  font-family: var(--tr-serif);
+  color: var(--tr-faint);
+}
+
 @media (max-width: 48em) {
   .tr-cmp-head {
     display: none;

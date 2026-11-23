@@ -1,6 +1,8 @@
+import { extractUnit, stripPlaceholders } from "../epub/blocks.ts";
 import { EpubBook } from "../epub/book.ts";
+import type { UnitRole } from "../epub/flow.ts";
+import { segmentUnits } from "../epub/segments.ts";
 import { computeStructure } from "../epub/structure.ts";
-import { renderRangesMarkdown } from "../epub/text.ts";
 import { sourceLanguage } from "../languages/index.ts";
 import { callStructured } from "../llm/call.ts";
 import {
@@ -10,11 +12,12 @@ import {
   fromAiAlignment,
   proposeAlignment,
 } from "../pipeline/alignment.ts";
+import { matchPassages } from "../pipeline/passages.ts";
 import { alignBlocks, alignOutputFor } from "../prompts/alignment.ts";
 import type { AppContext } from "../server/context.ts";
 import { Alignment } from "../shared/schemas/alignment.ts";
 import { newId, nowIso } from "../shared/schemas/common.ts";
-import { EpubStructure, type Segment } from "../shared/schemas/epub.ts";
+import { EpubStructure, type Segment, type UnitRange } from "../shared/schemas/epub.ts";
 import type { Pair } from "../shared/schemas/project.ts";
 import { readJson, removePath, writeFileAtomic, writeJson } from "../store/json.ts";
 import { NotFoundError, UserError } from "./projects.ts";
@@ -80,6 +83,7 @@ export async function importPair(
     createdAt: nowIso(),
     phase1: { state: "none", finishedAt: null, entries: null },
     fromBook: null,
+    filesChangedAt: null,
   };
   await writeFileAtomic(app.paths.pairEpub(pid, pair.id, "source"), files.source.bytes);
   await writeFileAtomic(app.paths.pairEpub(pid, pair.id, "target"), files.target.bytes);
@@ -187,37 +191,135 @@ export async function aiProposeAlignment(
   return writeJson(app.paths.alignment(pid, pairId), Alignment, alignment);
 }
 
-/** Start and end of both sides of an alignment unit, as Markdown, for checking a match. */
-export async function unitPreview(
+/** A passage of a pair's book, as Review shows passages: text with formatting tags. */
+export interface ReadingPassage {
+  role: UnitRole;
+  inFootnote: boolean;
+  text: string;
+  placeholders: { n: number; kind: "g" | "x"; label: string; required: boolean }[];
+}
+
+function readingPassages(book: EpubBook, ranges: UnitRange[]): ReadingPassage[] {
+  const out: ReadingPassage[] = [];
+  for (const { docIndex, unit } of segmentUnits(book, ranges)) {
+    if (unit.role === "title") continue;
+    if (unit.kind === "break") {
+      out.push({ role: "break", inFootnote: false, text: "* * *", placeholders: [] });
+      continue;
+    }
+    const loaded = book.doc(docIndex);
+    const extracted = extractUnit(loaded.src, unit, docIndex, loaded.info.path);
+    if (!extracted.text.trim()) continue;
+    out.push({
+      role: unit.role,
+      inFootnote: unit.inFootnote,
+      text: extracted.text,
+      placeholders: extracted.placeholders.map(({ n, kind, label, required }) => ({
+        n,
+        kind,
+        label,
+        required,
+      })),
+    });
+  }
+  return out;
+}
+
+/**
+ * The text of some chapters of both books, for reading them side by side:
+ * the passages, lined up by length and shared names.
+ */
+export async function pairText(
   app: AppContext,
   pid: string,
   pairId: string,
-  unitId: string,
-  chars = 1500,
+  chapters: { source: string[]; target: string[] },
 ) {
   const alignment = await loadAlignment(app, pid, pairId);
-  const unit = alignment.units.find((u) => u.id === unitId);
-  if (!unit) throw new NotFoundError("Alignment unit");
   const side = async (which: "source" | "target", ids: string[], depth: number) => {
-    const structure = await loadStructure(app, pid, pairId, which);
-    const segs = segmentsAt(structure, depth).filter((s) => ids.includes(s.id));
-    const book = await app.books.open(app.paths.pairEpub(pid, pairId, which));
-    const text = renderRangesMarkdown(
-      book,
-      segs.flatMap((s) => s.ranges),
+    const byId = new Map(
+      segmentsAt(await loadStructure(app, pid, pairId, which), depth).map((s) => [s.id, s]),
     );
+    const segments = ids.map((id) => {
+      const s = byId.get(id);
+      if (!s) throw new UserError(`The chapters have changed; reload the page. (${id})`);
+      return s;
+    });
+    const book = await app.books.open(app.paths.pairEpub(pid, pairId, which));
     return {
-      titles: segs.map((s) => s.title),
-      words: segs.reduce((s, x) => s + x.words, 0),
-      start: text.slice(0, chars),
-      end: text.length > chars * 2 ? text.slice(-chars) : text.slice(chars, chars * 2),
-      truncated: text.length > chars * 2,
+      titles: segments.map((s) => s.title),
+      words: segments.reduce((sum, s) => sum + s.words, 0),
+      passages: readingPassages(
+        book,
+        segments.flatMap((s) => s.ranges),
+      ),
     };
   };
+  const source = await side("source", chapters.source, alignment.tocDepthSource);
+  const target = await side("target", chapters.target, alignment.tocDepthTarget);
+  const plain = (p: ReadingPassage[]) => p.map((x) => stripPlaceholders(x.text));
+  const rows = matchPassages(plain(source.passages), plain(target.passages));
   return {
-    source: await side("source", unit.source, alignment.tocDepthSource),
-    target: await side("target", unit.target, alignment.tocDepthTarget),
+    source: { titles: source.titles, words: source.words, passages: source.passages.length },
+    target: { titles: target.titles, words: target.words, passages: target.passages.length },
+    rows: rows.map((r) => ({
+      source: r.source.map((i) => source.passages[i]!),
+      target: r.target.map((i) => target.passages[i]!),
+    })),
   };
+}
+
+/**
+ * Puts another EPUB in place of one of the pair's books. The alignment is
+ * proposed again and has to be confirmed; the knowledge base, your edits
+ * and phase 1's saved reads stay until phase 1 runs again (a read is only
+ * reused if the same row's text is unchanged). The pair keeps its title,
+ * which books show in their reference knowledge.
+ */
+export async function replacePairFile(
+  app: AppContext,
+  pid: string,
+  pairId: string,
+  side: "source" | "target",
+  file: { name: string; bytes: Uint8Array },
+): Promise<Pair> {
+  const project = await app.projects.get(pid);
+  const pair = await app.projects.pair(pid, pairId);
+  const structure = computeStructure(
+    EpubBook.open(file.bytes),
+    side === "source" ? project.sourceLang : project.targetLang,
+  );
+  if (structure.totalWords === 0)
+    throw new UserError(
+      side === "source"
+        ? "The original book seems to have no text."
+        : "The translated book seems to have no text.",
+    );
+  const other = await loadStructure(app, pid, pairId, side === "source" ? "target" : "source");
+  const source = side === "source" ? structure : other;
+  const target = side === "target" ? structure : other;
+
+  const epub = app.paths.pairEpub(pid, pairId, side);
+  await writeFileAtomic(epub, file.bytes);
+  app.books.forget(epub);
+  await writeJson(app.paths.pairStructure(pid, pairId, side), EpubStructure, structure);
+  const depths = { source: source.maxDepth, target: target.maxDepth };
+  await writeJson(
+    app.paths.alignment(pid, pairId),
+    Alignment,
+    proposeAlignment(segmentsAt(source, depths.source), segmentsAt(target, depths.target), depths, {
+      languages: { source: project.sourceLang, target: project.targetLang },
+    }),
+  );
+  const saved = await app.projects.savePair(pid, {
+    ...pair,
+    ...(side === "source"
+      ? { sourceFileName: safeFileName(file.name) }
+      : { targetFileName: safeFileName(file.name) }),
+    filesChangedAt: nowIso(),
+  });
+  await app.projects.touch(pid);
+  return saved;
 }
 
 export async function deletePair(app: AppContext, pid: string, pairId: string): Promise<void> {

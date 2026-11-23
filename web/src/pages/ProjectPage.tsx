@@ -22,7 +22,7 @@ import { useJobs } from "../components/JobsIndicator.tsx";
 import { PageHeader, Section } from "../components/PageHeader.tsx";
 import { StageMark } from "../components/StageMark.tsx";
 import { displayTitle, plural, withArticle } from "../lib/format.ts";
-import { BOOK_STAGES, type MarkState, PAIR_STAGES } from "../lib/stages.ts";
+import { BOOK_STAGES, learnedBeforeReplace, type MarkState, PAIR_STAGES } from "../lib/stages.ts";
 import { LanguageNotesPanel } from "./project/LanguageNotesPanel.tsx";
 import { UsagePanel } from "./project/UsagePanel.tsx";
 
@@ -265,7 +265,7 @@ function Overview({
                         {
                           label:
                             p.phase1.entries !== null
-                              ? `${p.fromBook ? "Made from a book: " : "Learned "}${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}`
+                              ? `${p.fromBook ? "Made from a book: " : "Learned "}${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}${learnedBeforeReplace(p) ? ", before a book was replaced" : ""}`
                               : "Not learned yet",
                           mark,
                         },

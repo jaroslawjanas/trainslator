@@ -52,6 +52,8 @@ export const Pair = z.object({
   }),
   /** Set when the pair was made from a finished book: its knowledge base is the book's. */
   fromBook: z.object({ bookId: Id, title: z.string(), madeAt: IsoDate }).nullable().default(null),
+  /** When one of the two EPUBs was last replaced; null if never. */
+  filesChangedAt: IsoDate.nullable().default(null),
 });
 export type Pair = z.infer<typeof Pair>;
 

@@ -534,7 +534,9 @@ model's guesses.
 
 On the project page, press **Add reference pair** and choose the **English original** and the
 **Published translation**, both as DRM-free EPUBs. The app reads both books' structure and opens
-**Alignment**.
+**Alignment**. Before you confirm anything, switch it to **Side by side** and read a few rows (see
+below): a book converted badly, say from a PDF with a line break at every printed line, is easy
+to spot there and spoils everything phase 1 learns from it.
 
 A book you finished in this project can become a pair too, without uploading or learning: see
 [Using the book as a reference pair](#using-the-book-as-a-reference-pair).
@@ -557,11 +559,10 @@ titles and numbers (digits, Roman numerals, or words such as *Chapter One*, *Roz
   licences and anything that exists on one side only.
 - The **Length** column compares each row with the book's overall length ratio. Around 100% is
   expected; yellow means somewhat off; red means the two sides probably don't match. Below it,
-  "% sure" is the app's confidence. Click the percentage to open **Compare the two sides**,
-  showing the start and end of both texts.
+  "% sure" is the app's confidence. Click the percentage to read that row side by side.
 - The small arrows next to a chapter move it to the previous or next row. The **⋯** menu offers
-  **Compare text**, **Merge with next row**, **Split off the last chapter** and **Unlink the two
-  sides**.
+  **Read side by side**, **Merge with next row**, **Split off the last chapter** and **Unlink the
+  two sides**.
 - When it looks right, press **Confirm alignment**. You can **Save** without confirming, or
   **Undo** unsaved changes. Phase 1 needs a confirmed alignment.
 
@@ -570,9 +571,35 @@ titles and numbers (digits, Roman numerals, or words such as *Chapter One*, *Roz
 *A confirmed alignment. The translator's note and the acknowledgements exist on one side only, so
 they're unticked.*
 
-At the bottom, **Notes about the files** lists anything unusual the app noticed in the EPUBs, and
-**Delete pair** removes the pair and what was learned from it. Books that used the pair keep their
-own knowledge bases.
+At the bottom, **Notes about the files** lists anything unusual the app noticed in the EPUBs.
+
+#### Reading a pair side by side
+
+**Side by side**, at the top left of Alignment, shows one row at a time the way Review shows a
+translation: the English on the left, the translation on the right, passage by passage. The rows
+of the alignment are listed on the left with their length; the arrows go to the previous or next
+row. It shows the rows as they are in the table, so you can move a chapter, read the result, and
+only then save.
+
+Passages are lined up by their length and the names and numbers they share, so now and then a
+row pairs passages that don't belong together, or a passage stands alone with a dash on the other
+side. A few of those are normal (a translator merged two paragraphs, or added a note). If the two
+sides drift apart for a whole chapter, the chapters don't match, or the text of one book is
+damaged: lines broken in the middle of sentences, paragraphs out of order, text from elsewhere.
+Replace the damaged book (below) rather than learning from it.
+
+#### Replacing or deleting a pair's books
+
+**Manage**, at the top right of every page of a pair, shows the pair's two files and offers:
+
+- **Replace the English book…** and **Replace the translation…** put another EPUB in place of
+  one side, for example a better edition. The pair keeps its name. The chapters are matched again,
+  so check the alignment and confirm it, then run **Learning** again: until you do, the pair keeps
+  its knowledge base, and Learning says it was learned before a book was replaced. Your own edits
+  are kept. Learning reads the chapters again; a chapter pair whose text and row didn't change may
+  be reused.
+- **Delete this pair…** removes the pair, its two books and what was learned from them. Books
+  that used the pair keep their own knowledge bases.
 
 ### Learning (phase 1)
 
@@ -1338,8 +1365,9 @@ about half a minute and reloads what it shows.
 3. **Pick the closest reference pair.** An earlier volume of the same series is ideal: names and
    invented terms carry over directly. Same author or genre is the next best thing. Two or three
    pairs are plenty; order the closest first.
-4. **Take the alignment seriously.** Untick everything that isn't story text on both sides. A
-   mismatched row teaches the model wrong "translations".
+4. **Take the alignment seriously.** Read a few rows **Side by side** to make sure both books'
+   text is sound, and untick everything that isn't story text on both sides. A mismatched row, or
+   a damaged book, teaches the model wrong "translations".
 5. **Skim each pair's knowledge base.** Delete noise and lock what you're sure of. Fix anything
    that's wrong now, because it will be copied into your book.
 6. **Answer every open question before translating.** Gender and forms of address decide grammar in

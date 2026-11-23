@@ -8,6 +8,7 @@ import { defaultPairStage, PAIR_STAGES } from "../lib/stages.ts";
 import { KbEditor } from "./kb/KbEditor.tsx";
 import { useSourceName } from "./ProjectPage.tsx";
 import { AlignmentPanel, type PairDetail } from "./pair/AlignmentPanel.tsx";
+import { PairMenu } from "./pair/PairMenu.tsx";
 import { Phase1Panel } from "./pair/Phase1Panel.tsx";
 
 export function PairPage() {
@@ -30,7 +31,7 @@ export function PairPage() {
       <Navigate to={`/projects/${pid}/pairs/${pairId}/${defaultPairStage(data.pair)}`} replace />
     );
   const descriptions: Record<string, string> = {
-    alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, untick what phase 1 should skip (front matter, notes, a licence), then confirm.`,
+    alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, read them side by side, untick what phase 1 should skip (front matter, notes, a licence), then confirm.`,
     learn:
       "Phase 1. The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
     kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when phase 1 runs again.",
@@ -42,6 +43,7 @@ export function PairPage() {
         context={displayTitle(data.pair.title)}
         title={def.label}
         description={descriptions[def.key]}
+        actions={<PairMenu pid={pid} pair={data.pair} />}
       />
       {def.key === "alignment" && <AlignmentPanel pid={pid} detail={data} />}
       {def.key === "learn" && <Phase1Panel pid={pid} pairId={pairId} />}

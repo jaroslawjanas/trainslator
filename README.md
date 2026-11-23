@@ -17,7 +17,8 @@ to a finished book, with screenshots, recommendations and troubleshooting.
 ## How it works
 
 1. **Reference pairs (phase 1).** You add a book and its published translation. The
-   app proposes which chapters match; you check and confirm. The AI then reads each chapter
+   app proposes which chapters match; you check them, reading both books side by side, and
+   confirm. The AI then reads each chapter
    pair and builds a knowledge base of the translator's decisions: names, invented terms,
    wordplay, forms of address and style. Ordinary words are left out. Pairs are optional.
 2. **Reading the new book (phase 2).** The AI reads the new book chapter by chapter,
@@ -57,7 +58,8 @@ it counts where an entry appears or which reference entries a book needs.
 - **Knowledge bases** you can read and edit: entries grouped by language, facts such as gender
   and forms of address, style rules, open questions you can answer or ask a model about, and
   the exact text the model receives. Your changes are locked and survive re-runs.
-- **Alignment** of reference books by chapter, proposed by length or with AI.
+- **Alignment** of reference books by chapter, proposed by length or with AI, and a side-by-side
+  view to read each pair of chapters before learning from it. A pair's books can be replaced later.
 - **Finished books as reference pairs:** the original, the build and the book's knowledge base,
   ready for the next book without learning or aligning.
 - **Coined terms** (names the AI had to invent while translating) you can edit, delete or move

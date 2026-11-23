@@ -7,6 +7,7 @@ import { useJobs } from "../../components/JobsIndicator.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
+import { learnedBeforeReplace } from "../../lib/stages.ts";
 import { useSettings } from "../SettingsPage.tsx";
 import type { PairDetail } from "./AlignmentPanel.tsx";
 import { Phase1Chapters } from "./Phase1Chapters.tsx";
@@ -66,6 +67,15 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
           Made from the book “{displayTitle(fromBook.title)}”: its knowledge base is the book's, so
           there's nothing to learn first. Learning again replaces it with what the AI finds by
           comparing the two EPUBs; your own changes are kept.
+        </Alert>
+      )}
+      {learnedBeforeReplace(pair.data.pair) && (
+        <Alert color="yellow" mb="lg" maw={720}>
+          One of the two books was replaced after this knowledge base was learned. Check the{" "}
+          <Anchor component={Link} to={`/projects/${pid}/pairs/${pairId}/alignment`}>
+            chapter alignment
+          </Anchor>
+          , then learn again so the knowledge base matches the books. Your own changes are kept.
         </Alert>
       )}
       {!confirmed && (
