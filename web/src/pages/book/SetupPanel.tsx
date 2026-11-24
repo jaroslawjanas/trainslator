@@ -31,6 +31,14 @@ const GUESS_TEXT: Record<string, string> = {
   body: "",
 };
 
+/** What each choice of reference knowledge does, shown under the switch. */
+const REF_KB_MODE_NOTES: Record<string, string> = {
+  auto: "Automatic sends every entry of the chosen pairs, unless together they'd take more than about 35% of the smallest context window among your phase 2 and 3 models. Then it sends only the entries this book mentions, as Only entries in this book does.",
+  all: "Every entry of every chosen pair goes into each request of phases 2 and 3, whether this book mentions it or not. The most complete, and the most tokens.",
+  relevant:
+    "Only entries whose name or term appears somewhere in this book go in, plus all style rules. A name counts in the forms the app knows for the book's language (such as plurals or case endings), however its apostrophes and dashes are typed, and with or without a leading article. An entry the book never names isn't sent.",
+};
+
 export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail }) {
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -165,6 +173,9 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
                 {detail.reference.tokens.toLocaleString()} tokens per request.
               </Text>
             </Group>
+            <Text size="sm" c="dimmed" maw={720}>
+              {REF_KB_MODE_NOTES[book.refKbMode]}
+            </Text>
           </Stack>
         )}
       </Section>

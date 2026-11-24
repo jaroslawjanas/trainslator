@@ -1,7 +1,7 @@
 import { estimateTokens } from "../llm/tokens.ts";
 import type { Kb } from "../shared/schemas/kb.ts";
 import type { RefKbMode } from "../shared/schemas/project.ts";
-import { inflection, textIndex } from "./match.ts";
+import { foldForMatching, inflection, termVariants, textIndex } from "./match.ts";
 import { renderReferenceKbs } from "./render.ts";
 
 export interface ReferenceSelection {
@@ -53,9 +53,11 @@ export function selectReferenceKbs(
       entries: totalEntries,
       totalEntries,
     };
-  const lower = bookText.toLowerCase();
   const forms = inflection(lang);
-  const inBook = forms ? textIndex(bookText, forms) : (t: string) => mentioned(t, lower);
+  const lower = forms ? "" : foldForMatching(bookText).toLowerCase();
+  const inBook = forms
+    ? textIndex(bookText, forms)
+    : (term: string) => termVariants(term, lang).some((t) => mentioned(t, lower));
   const relevant = refs.map((r) => ({
     title: r.title,
     kb: {

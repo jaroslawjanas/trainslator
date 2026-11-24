@@ -45,7 +45,8 @@ instructions to the AI are in English with the source language named in them, an
 (synopses, knowledge base notes, questions) stay in English too. For sources other than English,
 the AI is asked for names and terms in their base form. Many of these languages change the form of
 names ("des Ordens", "w Krakowie", "v Praze", "у Петра"), and the app finds them in any form when
-it counts where an entry appears or which reference entries a book needs.
+it counts where an entry appears or which reference entries a book needs: English plurals too,
+however apostrophes and dashes are typed, and with or without a leading article.
 
 ## Features
 

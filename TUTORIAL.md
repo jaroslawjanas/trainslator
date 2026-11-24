@@ -778,12 +778,17 @@ Below, choose how much of the reference knowledge to send:
 
 - **All entries**: every entry of every chosen pair.
 - **Only entries in this book**: only entries whose name or term appears in this book, plus all
-  style rules.
+  style rules. A name counts in the forms the app knows for the book's language (in English
+  *Klingon* for *Klingons* and *parties* for *party*, in German *des Ordens* for *Orden*; Spanish,
+  French, Italian, Portuguese and Catalan names must appear as they are), however its apostrophes
+  and dashes are typed (*Heaven's River* and *Heaven’s River*), and with or without a leading
+  article (*the Devil*). An entry whose name the book never uses isn't sent.
 - **Automatic** (default): all entries, unless that would take more than about 35% of the smallest
-  context window among your phase 2 and 3 models; then only the relevant ones.
+  context window among your phase 2 and 3 models; then only the relevant ones. With models of a
+  million tokens, that's all entries up to about 350,000 tokens.
 
 The line next to it says what is used now, for example "Now using all 412 of 412 entries, about
-9,800 tokens per request."
+9,800 tokens per request." Below it, a note explains the option you chose.
 
 ### Chapters for phase 2
 

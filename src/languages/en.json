@@ -3,6 +3,8 @@
   "tag": "en",
   "article": "an",
   "keyArticles": ["the", "a", "an"],
+  "endings": ["s", "es"],
+  "alternations": [["y", "ie"]],
   "frontMatter": [
     "contents",
     "table of contents",

@@ -23,7 +23,7 @@ Pepper: refs ["s7"]
 add applied: added
 add applied: already listed as "Gray Heron"; filled in what was missing
 
-relevant 3/6
+relevant 4/6
 ### From "Earlier Book"
 ## Characters
 - Mira → Mira (kept) [gender: female]
@@ -31,6 +31,9 @@ relevant 3/6
 
 ## Organizations, titles and named things
 - Gray Heron → Szara Czapla — a ship
+
+## Terms and recurring phrases
+- The storm → sztorm — forms: burza
 
 ## Style rules
 1. Dialogue uses dashes.

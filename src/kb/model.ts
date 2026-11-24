@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { keyArticleRegex } from "../languages/index.ts";
 import type { KbEntry, KbKind } from "../shared/schemas/kb.ts";
-import { inflection, mentionsAny } from "./match.ts";
+import { foldForMatching, inflection, mentionsAny, termVariants } from "./match.ts";
 
 export type KindFamily = "names" | "expressions";
 
@@ -67,9 +67,10 @@ export function computeRefs(
   if (terms.length === 0) return [];
   const forms = inflection(lang);
   if (forms) return texts.filter((t) => mentionsAny(terms, t.text, forms)).map((t) => t.id);
+  const variants = terms.flatMap((t) => termVariants(t, lang));
   const pattern = new RegExp(
-    `(?<![\\p{L}\\p{N}])(${terms.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`,
+    `(?<![\\p{L}\\p{N}])(${variants.map(escapeRegExp).join("|")})(?![\\p{L}\\p{N}])`,
     "iu",
   );
-  return texts.filter((t) => pattern.test(t.text)).map((t) => t.id);
+  return texts.filter((t) => pattern.test(foldForMatching(t.text))).map((t) => t.id);
 }

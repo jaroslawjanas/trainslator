@@ -1,4 +1,4 @@
-import { type LanguageData, languageData } from "../languages/index.ts";
+import { keyArticleRegex, type LanguageData, languageData } from "../languages/index.ts";
 
 /**
  * Finding names and terms in running text when the language inflects them:
@@ -9,9 +9,30 @@ import { type LanguageData, languageData } from "../languages/index.ts";
  * a missed name drops knowledge the translation needs, a false match only
  * sends an entry that wasn't needed.
  *
- * Languages without endings (English) don't use this; their matching stays
- * exactly as it was.
+ * Languages without endings match names exactly. Every language ignores how
+ * apostrophes and dashes are typed, and finds a name given with a leading
+ * article ("the Devil") without it too.
  */
+
+/**
+ * Spelling that shouldn't decide whether a name matches: curly and straight
+ * apostrophes, the various dashes, composed and decomposed accents.
+ */
+export function foldForMatching(text: string): string {
+  return text
+    .normalize("NFC")
+    .replace(/[‘’ʼ`´′]/g, "'")
+    .replace(/[‐‑‒–—―]/g, "-");
+}
+
+/** A term as it is matched, and without a leading article when it has one. */
+export function termVariants(term: string, lang: string): string[] {
+  const t = foldForMatching(term.trim());
+  const article = keyArticleRegex(lang);
+  if (!article) return [t];
+  const bare = t.replace(new RegExp(article.source, "i"), "").trim();
+  return bare !== t && bare.length >= 2 ? [t, bare] : [t];
+}
 
 /** Data for inflection-aware matching, or null when the language matches names exactly. */
 export function inflection(lang: string): LanguageData | null {
@@ -81,24 +102,64 @@ export function termPattern(term: string, data: LanguageData): RegExp | null {
 
 /** Whether any of the terms occurs in the text, in any of its forms. */
 export function mentionsAny(terms: string[], text: string, data: LanguageData): boolean {
-  return terms.some((t) => termPattern(t, data)?.test(text) ?? false);
+  const folded = foldForMatching(text);
+  return terms.some((term) =>
+    termVariants(term, data.tag).some((t) => termPattern(t, data)?.test(folded) ?? false),
+  );
 }
 
 /**
  * For checking many terms against one long text (a whole book): the text's
- * words are collected once, one-word terms are looked up in that set, and
- * only terms of several words that could match are tested with a pattern.
+ * words, and the pairs of words that follow each other with only spaces
+ * between them, are collected once. A term is looked up in those sets, and
+ * tested with a pattern over the whole text only when the sets can't decide.
  */
 export function textIndex(text: string, data: LanguageData): (term: string) => boolean {
-  const words = new Set((text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []) as string[]);
-  return (term) => {
-    const t = term.trim();
+  const folded = foldForMatching(text);
+  const lower = folded.toLowerCase();
+  const words = new Set<string>();
+  const pairs = new Set<string>();
+  let previous: { word: string; end: number } | null = null;
+  for (const m of lower.matchAll(/[\p{L}\p{N}]+/gu)) {
+    words.add(m[0]);
+    if (previous && /^\s+$/.test(lower.slice(previous.end, m.index)))
+      pairs.add(`${previous.word} ${m[0]}`);
+    previous = { word: m[0], end: m.index + m[0].length };
+  }
+  const anyPair = (a: string[], b: string[]) =>
+    a.some((x) => b.some((y) => pairs.has(`${x} ${y}`)));
+  const has = (t: string): boolean => {
     if (t.length < 2) return false;
     const forms = termWords(t, data);
     if (forms.length === 0) return false;
+    // Every word must occur: in one of its forms, or as it is when it holds an
+    // apostrophe or a hyphen (then each of its parts must).
+    const occurs = forms.every((f) =>
+      f.some((w) =>
+        LETTERS.test(w)
+          ? words.has(w)
+          : (w.match(/[\p{L}\p{N}]+/gu) ?? []).every((p) => words.has(p)),
+      ),
+    );
+    if (!occurs) return false;
+    // Neighbouring words of the term must be neighbours somewhere in the text.
+    // A word with an apostrophe or hyphen meets its neighbour with its first or
+    // last part; with punctuation at that edge there's nothing to check.
+    const edge = (f: string[], last: boolean): string[] | null => {
+      if (f.every((w) => LETTERS.test(w))) return f;
+      const w = f[0]!;
+      const parts = w.match(/[\p{L}\p{N}]+/gu) ?? [];
+      const atEdge = last ? /[\p{L}\p{N}]$/u.test(w) : /^[\p{L}\p{N}]/u.test(w);
+      return atEdge && parts.length > 0 ? [last ? parts.at(-1)! : parts[0]!] : null;
+    };
+    for (let i = 1; i < forms.length; i++) {
+      const a = edge(forms[i - 1]!, true);
+      const b = edge(forms[i]!, false);
+      if (a && b && !anyPair(a, b)) return false;
+    }
     const simple = forms.every((f) => f.every((w) => LETTERS.test(w)));
-    if (!simple) return termPattern(t, data)?.test(text) ?? false;
-    if (!forms.every((f) => f.some((w) => words.has(w)))) return false;
-    return forms.length === 1 || (termPattern(t, data)?.test(text) ?? false);
+    if (simple && forms.length <= 2) return true;
+    return termPattern(t, data)?.test(folded) ?? false;
   };
+  return (term) => termVariants(term, data.tag).some(has);
 }
