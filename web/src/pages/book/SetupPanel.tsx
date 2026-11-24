@@ -33,8 +33,8 @@ const GUESS_TEXT: Record<string, string> = {
 
 /** What each choice of reference knowledge does, shown under the switch. */
 const REF_KB_MODE_NOTES: Record<string, string> = {
-  auto: "Automatic sends every entry of the chosen pairs, unless together they'd take more than about 35% of the smallest context window among your phase 2 and 3 models. Then it sends only the entries this book mentions, as Only entries in this book does.",
-  all: "Every entry of every chosen pair goes into each request of phases 2 and 3, whether this book mentions it or not. The most complete, and the most tokens.",
+  auto: "Automatic sends every entry of the chosen pairs, unless together they'd take more than about 35% of the smallest context window among your reading and translation models. Then it sends only the entries this book mentions, as Only entries in this book does.",
+  all: "Every entry of every chosen pair goes into each reading and translation request, whether this book mentions it or not. The most complete, and the most tokens.",
   relevant:
     "Only entries whose name or term appears somewhere in this book go in, plus all style rules. A name counts in the forms the app knows for the book's language (such as plurals or case endings), however its apostrophes and dashes are typed, and with or without a leading article. An entry the book never names isn't sent.",
 };
@@ -93,7 +93,7 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
 
       <Section
         title="Reference knowledge"
-        description="The knowledge bases of these reference pairs go into phases 2 and 3, in this order."
+        description="The knowledge bases of these reference pairs go into reading and translation, in this order."
       >
         {detail.pairs.length === 0 ? (
           <Text size="md" c="dimmed">
@@ -181,8 +181,8 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
       </Section>
 
       <Section
-        title="Chapters for phase 2"
-        description={`Phase 2 reads the ticked chapters in order (${plural(chosenWords, "word")} now). Front and back matter are rarely worth reading.`}
+        title="Chapters to read"
+        description={`The ticked chapters are read in order (${plural(chosenWords, "word")} now). Front and back matter are rarely worth reading.`}
         actions={
           <Select
             aria-label="Chapters from the table of contents"

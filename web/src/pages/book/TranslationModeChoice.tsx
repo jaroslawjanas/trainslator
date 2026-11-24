@@ -131,7 +131,7 @@ function ModeHelp({ opened, onClose }: { opened: boolean; onClose: () => void })
           />
           <Side
             title="Whole chapters"
-            how="Each chapter is translated in one request, together with phase 2's summaries of the chapters before it. A chapter over about 5,000 words is split into a few parts. Each part sees the chapter's text and the translation so far."
+            how="Each chapter is translated in one request, together with the summaries of the chapters before it, written while reading. A chapter over about 5,000 words is split into a few parts. Each part sees the chapter's text and the translation so far."
             better={[
               "The model sees the whole chapter, so speakers, pronouns, tone and word choices stay consistent.",
               "It knows the story so far, not just this chapter.",

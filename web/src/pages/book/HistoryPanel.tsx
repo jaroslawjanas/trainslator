@@ -304,7 +304,7 @@ export function HistoryPanel({ pid, bookId }: { pid: string; bookId: string }) {
       </Section>
       <Section
         title="Knowledge bases"
-        description="The book's knowledge base is saved, with phase 2's chapter notes and your changes, before the whole book is read again."
+        description="The book's knowledge base is saved, with the chapter notes from reading and your changes, before the whole book is read again."
       >
         {knowledgeBases.length === 0 ? (
           <Text size="md" c="dimmed">

@@ -5,9 +5,9 @@ import type { Job, JobEvent } from "../../../src/shared/schemas/jobs.ts";
 
 const JOB_LABELS: Record<Job["type"], string> = {
   "language-notes": "Language notes",
-  phase1: "Phase 1: learning",
-  phase2: "Phase 2: reading",
-  phase3: "Phase 3: translation",
+  phase1: "Learning",
+  phase2: "Reading",
+  phase3: "Translation",
   retranslate: "Translating again",
   build: "Build",
 };

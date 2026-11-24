@@ -95,7 +95,7 @@ book into Polish; with another source, the app names that language wherever the 
 | Language notes | A short Markdown text about the target language (gender, forms of address, punctuation, how names are written) that goes into every request. |
 | Passage | One paragraph, heading, caption, list item or similar piece of text: the unit that gets translated, reviewed and edited. |
 | Placeholder | A marker such as `<g1>…</g1>` or `<x1/>` that stands for formatting (italics, a link, a footnote marker, a line break) while the model translates. |
-| Step | One kind of AI work, such as "Phase 1: read chapters" or "Phase 3: translate". Each step has its own model and reasoning settings. |
+| Step | One kind of AI work, such as "Learning: read chapter pairs" or "Translation". Each step has its own model and reasoning settings. |
 | Connection | An AI service the app talks to (OpenAI, Anthropic, Ollama, Claude Code and others), with its address, key and limits. Models belong to a connection. |
 | Advisor | An optional strong model that the other models may consult with a self-contained question when they're unsure. |
 | Job | A long-running piece of work (a phase, a re-translation, a build) that runs on the server, reports progress, and can be paused, resumed or cancelled. |
@@ -396,11 +396,11 @@ you can spend money where it matters: on the translation itself.
 | Step | What it does | Suggested model |
 |---|---|---|
 | Utility | Small jobs: language notes, the table of contents and the book title. | mid-range |
-| Phase 1: read chapters | Reads each chapter pair of a reference book and lists the translator's choices. | fast, inexpensive |
-| Phase 1: merge findings | Turns the findings from all chapters into the pair's knowledge base. | mid-range |
-| Phase 2: read chapters | Reads the new book chapter by chapter and updates its knowledge base. | mid-range |
-| Phase 2: final review | Cleans up the book's knowledge base after all chapters are read. | mid-range |
-| Phase 3: translate | Translates the book using the knowledge bases. | the strongest you can afford |
+| Learning: read chapter pairs | Reads each chapter pair of a reference book and lists the translator's choices. | fast, inexpensive |
+| Learning: merge findings | Turns the findings from all chapters into the pair's knowledge base. | mid-range |
+| Reading: read chapters | Reads the new book chapter by chapter and updates its knowledge base. | mid-range |
+| Reading: final review | Cleans up the book's knowledge base after all chapters are read. | mid-range |
+| Translation | Translates the book using the knowledge bases. | the strongest you can afford |
 
 ![Models for each step, with the advisor at the top](docs/images/steps.jpg)
 
@@ -790,7 +790,7 @@ Below, choose how much of the reference knowledge to send:
 The line next to it says what is used now, for example "Now using all 412 of 412 entries, about
 9,800 tokens per request." Below it, a note explains the option you chose.
 
-### Chapters for phase 2
+### Chapters to read
 
 Phase 2 reads the ticked chapters in order. The drop-down chooses how deep in the table of
 contents the chapters come from. By default the app ticks the chapters that are in the reading

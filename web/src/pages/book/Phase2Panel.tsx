@@ -67,7 +67,7 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
     } catch (e) {
       notifications.show({
         color: "red",
-        title: "Couldn't start phase 2",
+        title: "Couldn't start reading",
         message: (e as Error).message,
       });
     }

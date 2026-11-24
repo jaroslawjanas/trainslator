@@ -31,10 +31,10 @@ export function PairPage() {
       <Navigate to={`/projects/${pid}/pairs/${pairId}/${defaultPairStage(data.pair)}`} replace />
     );
   const descriptions: Record<string, string> = {
-    alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, read them side by side, untick what phase 1 should skip (front matter, notes, a licence), then confirm.`,
+    alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, read them side by side, untick what learning should skip (front matter, notes, a licence), then confirm.`,
     learn:
-      "Phase 1. The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
-    kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when phase 1 runs again.",
+      "The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
+    kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when the pair is learned again.",
   };
 
   return (

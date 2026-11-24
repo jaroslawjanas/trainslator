@@ -54,7 +54,7 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
     } catch (e) {
       notifications.show({
         color: "red",
-        title: "Couldn't start phase 1",
+        title: "Couldn't start learning",
         message: (e as Error).message,
       });
     }

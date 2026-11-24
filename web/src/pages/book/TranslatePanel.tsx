@@ -698,7 +698,7 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
       >
         {state === "none" && detail.book.phase2.state === "none" && (
           <Text size="sm" c="yellow" mt="sm" pl={22}>
-            Phase 2 hasn't read this book yet. You can translate anyway, but names and terms will be
+            This book hasn't been read yet. You can translate anyway, but names and terms will be
             less consistent.
           </Text>
         )}

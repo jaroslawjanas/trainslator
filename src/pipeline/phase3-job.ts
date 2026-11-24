@@ -270,7 +270,7 @@ export async function phase3Job(app: AppContext, job: JobContext): Promise<void>
   job.progress(
     summary.chunks,
     summary.chunks,
-    `${summary.ok} units translated, ${summary.flagged} flagged, ${summary.refused} refused`,
+    `${summary.ok} passages translated, ${summary.flagged + summary.refused > 0 ? `${summary.flagged + summary.refused} need attention` : "none need attention"}`,
   );
   await saveTranslation(app, pid, bookId, "run");
   app.events.changed(pid, "phase3", bookId);

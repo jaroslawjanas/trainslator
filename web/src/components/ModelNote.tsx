@@ -43,7 +43,9 @@ export function ModelNote({ steps }: { steps: Step[] }) {
     <Stack gap={4} mt="sm" pl={22}>
       {rows.map(({ step, config, model, effort, warnings, advisor }) => (
         <Text key={step} size="sm" c="dimmed">
-          {STEP_INFO[step].label.replace(/^Phase \d: /, "").replace(/^./, (c) => c.toUpperCase())}
+          {STEP_INFO[step].label
+            .replace(/^(Learning|Reading): /, "")
+            .replace(/^./, (c) => c.toUpperCase())}
           {": "}
           {model ? (
             <>

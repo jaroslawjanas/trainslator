@@ -78,7 +78,7 @@ function newEntry(): KbEntry {
 function StatusIcon({ status }: { status: KbEntry["status"] }) {
   if (status === "locked")
     return (
-      <Tooltip label="Locked: set by you, kept when phases run again">
+      <Tooltip label="Locked: set by you, kept on later runs">
         <Box c="blue" style={{ display: "flex" }} aria-label="Locked">
           <IconLock size={15} stroke={1.8} />
         </Box>
@@ -516,7 +516,7 @@ export function KbEditor({
           {entries.length === 0 ? (
             <Text size="md" c="dimmed" py="lg">
               {data.kb.entries.length === 0
-                ? "The knowledge base is empty. Run the phase to fill it, or add entries yourself."
+                ? `The knowledge base is empty. ${scope === "pair" ? "Learn from the pair" : "Read the book"} to fill it, or add entries yourself.`
                 : "No entries match."}
             </Text>
           ) : (

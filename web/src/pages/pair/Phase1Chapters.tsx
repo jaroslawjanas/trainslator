@@ -206,7 +206,7 @@ export function Phase1Chapters({
       description={
         list.length > 0
           ? `${read} of ${list.length} read so far, with ${plural(total, "finding")}. Click a chapter to see what the AI noted in it.`
-          : "The chapters phase 1 reads, from the alignment."
+          : "The chapters that are read, from the alignment."
       }
     >
       {chapters.isLoading && <Loader size="sm" />}

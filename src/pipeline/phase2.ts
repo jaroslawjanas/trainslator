@@ -276,7 +276,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
 
   const steps = await planSteps(app, pid, bookId, chapterTarget);
   if (steps.length === 0)
-    throw new UserError("No chapters are selected for phase 2 (see the book's setup).");
+    throw new UserError("No chapters are selected for reading (see the book's setup).");
   const params = job.job.params;
   const fromStep = typeof params.fromStep === "number" ? params.fromStep : null;
   const rebuild = params.rebuild === true;

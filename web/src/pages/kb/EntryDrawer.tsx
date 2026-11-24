@@ -186,7 +186,7 @@ export function EntryDrawer({
         {!isNew && (
           <Text size="sm" c="dimmed">
             {e.status === "locked"
-              ? "Locked: set by you and kept when phases run again."
+              ? "Locked: set by you and kept on later runs."
               : e.status === "open"
                 ? "Open: the AI couldn't decide this yet."
                 : "Added automatically."}{" "}
@@ -220,7 +220,7 @@ export function EntryDrawer({
           <Text size="xs" c="dimmed">
             {isNew
               ? "Saving locks the entry: later runs keep it exactly as you set it."
-              : "Locked, the entry stays exactly as you set it when phases run again. Without locking, they may still change it."}
+              : "Locked, the entry stays exactly as you set it on later runs. Without locking, a later run may still change it."}
           </Text>
         )}
         <Group grow>

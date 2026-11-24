@@ -215,7 +215,7 @@ function Overview({
       <Box maw={920}>
         <Section
           title="Books"
-          description="Each book is read first (phase 2), then translated (phase 3) and built as a new EPUB."
+          description="Each book is read first, then translated and built as a new EPUB."
         >
           {books.length === 0 ? (
             <Text size="md" c="dimmed">
@@ -242,7 +242,7 @@ function Overview({
         </Section>
         <Section
           title="Reference pairs"
-          description={`${languageDisplayName(project.sourceLang)} books with their published translations. Phase 1 learns names, terms and style from them.`}
+          description={`${languageDisplayName(project.sourceLang)} books with their published translations. Names, terms and style are learned from them.`}
         >
           {pairs.length === 0 ? (
             <Text size="md" c="dimmed">

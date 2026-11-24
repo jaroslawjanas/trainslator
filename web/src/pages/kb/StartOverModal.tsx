@@ -126,8 +126,8 @@ export function StartOverModal({
       <Stack>
         <Text size="sm">
           The knowledge base is emptied
-          {scope === "book" ? ", with phase 2's chapter notes" : ""}. A copy is saved first, with
-          your changes, so you can restore it{" "}
+          {scope === "book" ? ", with the chapter notes from reading" : ""}. A copy is saved first,
+          with your changes, so you can restore it{" "}
           {scope === "pair" ? "under Earlier versions on the Knowledge base page" : "in History"}.
           {scope === "book"
             ? " Your translation isn't changed; translate again to use the new knowledge base."

@@ -17,13 +17,13 @@ import { useProject, useSourceName } from "./ProjectPage.tsx";
 
 const DESCRIPTIONS: Record<string, (target: string, source: string) => string> = {
   setup: () =>
-    "Which reference knowledge the AI gets, which chapters phase 2 reads, and which files are translated.",
+    "Which reference knowledge the AI gets, which chapters are read, and which files are translated.",
   read: () =>
-    "Phase 2. Before translating, the AI reads the book chapter by chapter. It writes a synopsis of each chapter and builds the book's knowledge base, with open questions where it can't decide yet.",
+    "Before translating, the AI reads the book chapter by chapter. It writes a synopsis of each chapter and builds the book's knowledge base, with open questions where it can't decide yet.",
   kb: (target) =>
-    `Names, terms and facts in this book, with their ${target} translations. What you edit is locked and kept when phases run again.`,
+    `Names, terms and facts in this book, with their ${target} translations. What you edit is locked and kept when the book is read or translated again.`,
   translate: (_, source) =>
-    `Phase 3. The AI translates the book in chunks or whole chapters, following both knowledge bases. Review it chapter by chapter: the ${source} on the left page, the translation on the right.`,
+    `The AI translates the book in chunks or whole chapters, following both knowledge bases. Review it chapter by chapter: the ${source} on the left page, the translation on the right.`,
   review: (_, source) =>
     `Up to three versions side by side: the ${source}, the current translation and saved ones. Edit any of them, rewrite a passage or part of it with a model, or copy a passage from one version to another. The current translation is the one that gets built.`,
   build: () =>
