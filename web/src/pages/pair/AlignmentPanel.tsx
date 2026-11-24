@@ -47,6 +47,8 @@ export interface PairDetail {
     fromBook: { bookId: string; title: string; madeAt: string } | null;
     /** When one of the two EPUBs was last replaced. */
     filesChangedAt: string | null;
+    /** The knowledge base was cleared; the next Learning run asks the models anew. */
+    askAnew: boolean;
   };
   source: EpubStructure;
   target: EpubStructure;

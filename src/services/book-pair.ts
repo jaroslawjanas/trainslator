@@ -164,6 +164,7 @@ export async function makeReferencePair(
       : { state: "none", finishedAt: null, entries: null },
     fromBook: { bookId, title: book.title, madeAt: now },
     filesChangedAt: null,
+    askAnew: false,
   };
   try {
     const sourceBytes = await fs.readFile(app.paths.bookEpub(pid, bookId));

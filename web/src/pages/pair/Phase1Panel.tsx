@@ -78,6 +78,12 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
           , then learn again so the knowledge base matches the books. Your own changes are kept.
         </Alert>
       )}
+      {pair.data.pair.askAnew && (
+        <Alert color="gray" mb="lg" maw={720}>
+          The knowledge base was cleared. Learning reads every chapter pair again and asks the
+          models anew instead of repeating their earlier answers.
+        </Alert>
+      )}
       {!confirmed && (
         <Alert color="yellow" mb="lg" maw={720}>
           Confirm the{" "}

@@ -198,6 +198,89 @@ describe("phase 1", () => {
     );
   });
 
+  it("starts over: saves a copy, empties the knowledge base, and asks the models anew", async () => {
+    const { pid, pairId } = await setup();
+    const base = `/api/projects/${pid}/pairs/${pairId}`;
+    const first = await runPhase1(pid, pairId);
+    const heron = first.entries.find((e) => e.source === "Gray Heron")!;
+    await srv!.json("PUT", `${base}/kb/entries/${heron.id}`, { ...heron, target: "Siwa Czapla" });
+    const reads = (from: number) =>
+      fake!.requests
+        .slice(from)
+        .filter((r) => text(r).includes("You study how a professional translator")).length;
+
+    // Learning again on its own repeats the saved reads: nothing is asked.
+    let sent = fake!.requests.length;
+    await runPhase1(pid, pairId);
+    expect(reads(sent)).toBe(0);
+
+    // Clear, keeping your changes: only your entry is left, and Learning hasn't run.
+    await srv!.json("POST", `${base}/kb/clear`, { dropOwn: false });
+    let kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.map((e) => [e.source, e.target])).toEqual([["Gray Heron", "Siwa Czapla"]]);
+    let detail = await srv!.json<{ pair: { phase1: { state: string }; askAnew: boolean } }>(
+      "GET",
+      base,
+    );
+    expect(detail.pair.phase1.state).toBe("none");
+    expect(detail.pair.askAnew).toBe(true);
+    const history = await srv!.json<{
+      knowledgeBases: { id: string; reason: string; entries: number }[];
+      current: string | null;
+    }>("GET", `${base}/kb/history`);
+    expect(history.knowledgeBases.map((k) => [k.reason, k.entries])).toEqual([
+      ["clear", first.entries.length],
+    ]);
+
+    // Learning after a clear reads every chapter pair again; afterwards saved reads count again.
+    sent = fake!.requests.length;
+    kb = await runPhase1(pid, pairId);
+    expect(reads(sent)).toBeGreaterThan(0);
+    expect(kb.entries.find((e) => e.id === heron.id)?.target).toBe("Siwa Czapla");
+    detail = await srv!.json("GET", base);
+    expect(detail.pair.askAnew).toBe(false);
+    sent = fake!.requests.length;
+    await runPhase1(pid, pairId);
+    expect(reads(sent)).toBe(0);
+
+    // Clear and learn again in one go, dropping your changes.
+    sent = fake!.requests.length;
+    const { job } = await srv!.json<{ job: { id: string } }>("POST", `${base}/kb/clear`, {
+      dropOwn: true,
+      learn: true,
+    });
+    expect((await srv!.ctx.runner.wait(job.id))?.status).toBe("done");
+    expect(reads(sent)).toBeGreaterThan(0);
+    kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.find((e) => e.source === "Gray Heron")?.target).toBe("Szara Czapla");
+
+    // The first copy comes back with a restore, your change included.
+    await srv!.json("POST", `${base}/kb/history/${history.knowledgeBases[0]!.id}/restore`);
+    kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries).toHaveLength(first.entries.length);
+    detail = await srv!.json("GET", base);
+    expect(detail.pair.phase1.state).toBe("done");
+    const after = await srv!.json<{ knowledgeBases: { reason: string }[]; current: string }>(
+      "GET",
+      `${base}/kb/history`,
+    );
+    expect(after.current).toBe(history.knowledgeBases[0]!.id);
+    expect(after.knowledgeBases.map((k) => k.reason)).toEqual(["clear", "clear", "restore"]);
+  });
+
+  it("refuses to clear and learn before the alignment is confirmed, leaving the knowledge base", async () => {
+    const { pid, pairId } = await setup();
+    const base = `/api/projects/${pid}/pairs/${pairId}`;
+    const kb = await runPhase1(pid, pairId);
+    const { alignment } = await srv!.json<{ alignment: Alignment }>("GET", base);
+    await srv!.json("PUT", `${base}/alignment`, { ...alignment, status: "proposed" });
+    const res = await srv!.call("POST", `${base}/kb/clear`, { dropOwn: false, learn: true });
+    expect(res.status).toBe(409);
+    expect((await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb.entries).toHaveLength(
+      kb.entries.length,
+    );
+  });
+
   it("reports its stages, each chapter's findings and every request it made", async () => {
     const { pid, pairId } = await setup();
     await runPhase1(pid, pairId);

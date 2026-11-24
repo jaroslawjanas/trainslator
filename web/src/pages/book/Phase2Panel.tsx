@@ -1,4 +1,4 @@
-import { Accordion, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { Accordion, Alert, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -9,8 +9,8 @@ import { Section } from "../../components/PageHeader.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
+import { StartOverModal } from "../kb/StartOverModal.tsx";
 import { useSettings } from "../SettingsPage.tsx";
-import { RebuildModal } from "./RebuildModal.tsx";
 import type { BookDetail, StepView } from "./types.ts";
 
 interface Estimate {
@@ -88,6 +88,12 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
 
   return (
     <>
+      {detail.book.askAnew && (
+        <Alert color="gray" mb="lg" maw={720}>
+          The knowledge base was cleared. Reading goes through every chapter again and asks the
+          models anew instead of repeating their earlier answers.
+        </Alert>
+      )}
       <RunPanel
         state={state}
         finishedAt={detail.book.phase2.finishedAt}
@@ -126,15 +132,13 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
       >
         <ModelNote steps={["phase2.chapter", "phase2.review"]} />
       </RunPanel>
-      <RebuildModal
+      <StartOverModal
         pid={pid}
-        bookId={bookId}
+        scope="book"
+        targetId={bookId}
         opened={rebuilding}
         costText={costText}
         onClose={() => setRebuilding(false)}
-        onConfirm={(dropOwn) =>
-          start(`/api/projects/${pid}/books/${bookId}/phase2/rebuild`, { dropOwn })
-        }
       />
       <Section
         title="Chapters"

@@ -240,7 +240,7 @@ export type SavedBuild = z.infer<typeof SavedBuild>;
 export const SavedKnowledge = z.object({
   id: Id,
   savedAt: IsoDate,
-  reason: z.enum(["rebuild", "restore"]),
+  reason: z.enum(["rebuild", "restore", "clear"]),
   contentHash: z.string(),
   entries: z.number().int(),
   open: z.number().int(),

@@ -57,7 +57,8 @@ it counts where an entry appears or which reference entries a book needs.
 - **Language notes** for the target language, drafted by AI and edited by you, in every request.
 - **Knowledge bases** you can read and edit: entries grouped by language, facts such as gender
   and forms of address, style rules, open questions you can answer or ask a model about, and
-  the exact text the model receives. Your changes are locked and survive re-runs.
+  the exact text the model receives. Your changes are locked and survive re-runs. **Start over**
+  empties a knowledge base to make it again, keeping a copy you can restore.
 - **Alignment** of reference books by chapter, proposed by length or with AI, and a side-by-side
   view to read each pair of chapters before learning from it. A pair's books can be replaced later.
 - **Finished books as reference pairs:** the original, the build and the book's knowledge base,

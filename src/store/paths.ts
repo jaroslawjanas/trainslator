@@ -112,6 +112,16 @@ export class DataPaths {
   pairKbOverrides(pid: string, pairId: string) {
     return path.join(this.pair(pid, pairId), "kb.overrides.json");
   }
+  /** Phase 1's saved work: chapter findings, groups and merge decisions. */
+  phase1Dir(pid: string, pairId: string) {
+    return path.join(this.pair(pid, pairId), "phase1");
+  }
+  pairHistoryIndex(pid: string, pairId: string) {
+    return path.join(this.pair(pid, pairId), "history", "knowledge.json");
+  }
+  pairSavedKnowledge(pid: string, pairId: string, id: string) {
+    return path.join(this.pair(pid, pairId), "history", "knowledge", checkId(id));
+  }
 
   // Books
   booksDir(pid: string) {

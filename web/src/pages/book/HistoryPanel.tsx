@@ -167,6 +167,7 @@ function Entry({
 const KNOWLEDGE_REASONS: Record<SavedKnowledgeView["reason"], string> = {
   rebuild: "before the whole book was read again",
   restore: "before another knowledge base was restored",
+  clear: "when the knowledge base was cleared",
 };
 
 function KnowledgeEntry({

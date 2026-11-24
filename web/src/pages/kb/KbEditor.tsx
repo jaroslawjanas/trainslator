@@ -18,7 +18,14 @@ import {
   Tooltip,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
-import { IconLock, IconQuestionMark, IconSearch, IconX } from "@tabler/icons-react";
+import {
+  IconHistory,
+  IconLock,
+  IconQuestionMark,
+  IconRefresh,
+  IconSearch,
+  IconX,
+} from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { languageDisplayName } from "../../../../src/shared/languages.ts";
@@ -30,9 +37,12 @@ import {
   type StyleRule,
 } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
+import { useJobs } from "../../components/JobsIndicator.tsx";
 import { count, plural } from "../../lib/format.ts";
+import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { useProject } from "../ProjectPage.tsx";
 import { EntryDrawer, type KbAnswer } from "./EntryDrawer.tsx";
+import { PairVersionsModal, StartOverModal, usePairVersions } from "./StartOverModal.tsx";
 
 export const KIND_TEXT: Record<string, string> = {
   person: "person",
@@ -345,6 +355,12 @@ export function KbEditor({
   const [kind, setKind] = useState<string | null>(null);
   const [status, setStatus] = useState("all");
   const [editing, setEditing] = useState<{ entry: KbEntry; isNew: boolean } | null>(null);
+  const [startingOver, setStartingOver] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const versions = usePairVersions(pid, targetId, scope === "pair");
+  const busy = (useJobs().data?.jobs ?? []).some(
+    (j) => j.targetId === targetId && ACTIVE_JOB.includes(j.status),
+  );
 
   const entries = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -380,6 +396,12 @@ export function KbEditor({
   };
   const open = data.kb.entries.filter((e) => e.status === "open");
   const yours = Object.keys(data.overrides.entries).length;
+  const empty =
+    data.kb.entries.length === 0 &&
+    data.kb.styleRules.length === 0 &&
+    yours === 0 &&
+    Object.keys(data.overrides.styleRules).length === 0;
+  const saved = versions.data?.knowledgeBases.length ?? 0;
   const open_ = (e: KbEntry) => setEditing({ entry: e, isNew: false });
 
   return (
@@ -390,8 +412,54 @@ export function KbEditor({
           {count(data.kb.styleRules.length, "style rule")}
           {yours > 0 ? `; ${yours} edited by you` : ""}.
         </Text>
-        <Button onClick={() => setEditing({ entry: newEntry(), isNew: true })}>Add entry</Button>
+        <Group gap="xs">
+          {scope === "pair" && saved > 0 && (
+            <Button
+              variant="subtle"
+              color="gray"
+              leftSection={<IconHistory size={15} />}
+              onClick={() => setVersionsOpen(true)}
+            >
+              Earlier versions ({saved})
+            </Button>
+          )}
+          <Tooltip
+            label={
+              busy
+                ? `A job is running for this ${scope}`
+                : empty
+                  ? "The knowledge base is empty"
+                  : "Save a copy and empty the knowledge base, to make it again"
+            }
+          >
+            <Button
+              variant="default"
+              leftSection={<IconRefresh size={15} />}
+              disabled={busy || empty}
+              onClick={() => setStartingOver(true)}
+            >
+              Start over…
+            </Button>
+          </Tooltip>
+          <Button onClick={() => setEditing({ entry: newEntry(), isNew: true })}>Add entry</Button>
+        </Group>
       </Group>
+      <StartOverModal
+        pid={pid}
+        scope={scope}
+        targetId={targetId}
+        opened={startingOver}
+        onClose={() => setStartingOver(false)}
+      />
+      {scope === "pair" && (
+        <PairVersionsModal
+          pid={pid}
+          pairId={targetId}
+          opened={versionsOpen}
+          busy={busy}
+          onClose={() => setVersionsOpen(false)}
+        />
+      )}
       <Tabs defaultValue="entries" keepMounted={false}>
         <Tabs.List mb="lg">
           <Tabs.Tab value="entries">Entries</Tabs.Tab>

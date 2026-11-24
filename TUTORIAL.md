@@ -637,8 +637,9 @@ failed** in the job row reads only those again.
 ## 8. Working with knowledge bases
 
 Pairs and books share the same editor, under **Knowledge base**. The top line counts entries,
-style rules and how many you edited; **Add entry** creates one by hand. There are three tabs:
-**Entries**, **Style rules** and **As the AI sees it**.
+style rules and how many you edited; **Add entry** creates one by hand, and **Start over…** empties
+the knowledge base so it can be made again (see [Starting over](#starting-over)). There are three
+tabs: **Entries**, **Style rules** and **As the AI sees it**.
 
 ### Entries
 
@@ -735,6 +736,25 @@ way to check what the model will actually be told. A book's knowledge base looks
 The short ids (`p1`, `p2`…) let the reading model refer to entries when it edits them. The order is
 fixed (by section, then by first appearance), so the same knowledge base always produces the same
 text, which lets providers cache it.
+
+### Starting over
+
+When a knowledge base came out badly (a damaged book, a wrong alignment, a weak model), make it
+again instead of fixing it entry by entry. **Start over…** saves a copy and empties it:
+
+- **The copy** keeps the entries, your changes and what the phase noted in each chapter. A pair's
+  copies are under **Earlier versions** on its Knowledge base page; a book's are in
+  [History](#knowledge-bases). **Restore** brings one back; the current one is saved first.
+- **Your own changes** (entries you set or answered, entries you deleted, style rules you wrote)
+  stay unless you tick **Also drop my own changes**.
+- **Clear** leaves the knowledge base empty and runs nothing, so you can first fix the alignment
+  or replace a book. **Clear and learn again** (a pair) or **Clear and read again** (a book) starts
+  the phase straight away; a pair needs a confirmed alignment for that.
+- **The next run asks anew.** Learning normally reuses what it read and decided before, so learning
+  again on an unchanged pair gives the same knowledge base. After starting over, Learning (or
+  Reading) reads every chapter again and asks the models anew, so it costs a full run.
+
+Until a cleared pair is learned again, books that use it get only your own entries from it.
 
 ---
 
@@ -844,11 +864,12 @@ in instead. Chapter 6 shows a rejected edit.*
 - **Run the final review again**: after a finished run, for example after you answered questions.
 - **Read again from this chapter** (inside a chapter): that chapter and all later ones are read
   anew, with fresh answers from the models. Your own changes are kept.
-- **Read the whole book again**: every chapter is read again from an **empty** knowledge base, and
-  the models are asked anew instead of repeating earlier answers. The current knowledge base is
-  saved in History first, so you can restore it if the new one comes out worse. Your own changes
-  are kept unless you tick **Also drop my own changes**; the dialog lists what that would drop. The
-  translation isn't changed; translate again to use the new knowledge base.
+- **Read the whole book again**: opens the [Start over](#starting-over) dialog. **Clear and read
+  again** reads every chapter again from an **empty** knowledge base, and the models are asked anew
+  instead of repeating earlier answers; **Clear** only empties it, for a run later. The current
+  knowledge base is saved in History first, so you can restore it if the new one comes out worse.
+  Your own changes are kept unless you tick **Also drop my own changes**; the dialog lists what
+  that would drop. The translation isn't changed; translate again to use the new knowledge base.
 
 <img src="docs/images/rebuild-modal.jpg" alt="The Read the whole book again dialog" width="560">
 
@@ -1253,8 +1274,9 @@ and the cost when prices are known. Builds made from it are listed below it for 
 
 ### Knowledge bases
 
-Before **Read the whole book again** starts, the book's knowledge base is saved here with phase 2's
-chapter notes and your changes. Each entry shows its number of entries, open questions and entries
+Before **Read the whole book again** starts, and when you [start over](#starting-over) on the
+Knowledge base page, the book's knowledge base is saved here with phase 2's chapter notes and your
+changes. Each entry shows its number of entries, open questions and entries
 set by you. **Restore** brings it back; the current one is saved first.
 
 > **Try things safely.** Want to see whether a stronger model, whole chapters or a cleaned-up
@@ -1511,8 +1533,9 @@ page still looks stale, reload it.
 <summary><b>Running a phase again gives exactly the same result.</b></summary>
 
 Answers that passed the checks are saved and reused when exactly the same request repeats.
-**Translate again**, **Translate the whole book again**, **Read again from this chapter** and
-**Read the whole book again** always ask afresh. To make everything ask afresh, use **Clear saved
+**Translate again**, **Translate the whole book again**, **Read again from this chapter**,
+**Read the whole book again** and the first run after **Start over** on a knowledge base always ask
+afresh. To make everything ask afresh, use **Clear saved
 answers** in Project settings.
 </details>
 

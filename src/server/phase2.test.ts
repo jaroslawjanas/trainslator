@@ -226,6 +226,48 @@ describe("phase 2", () => {
     expect(refused.status).toBe(400);
   });
 
+  it("clears the knowledge base into History, and the next read asks anew", async () => {
+    const { pid, bookId } = await setup();
+    const base = `/api/projects/${pid}/books/${bookId}`;
+    const first = await run(`${base}/phase2/run`);
+    const mira = first.entries.find((e) => e.source === "Mira")!;
+    await srv!.json("PUT", `${base}/kb/entries/${mira.id}`, { ...mira, target: "Mirka" });
+
+    await srv!.json("POST", `${base}/kb/clear`, { dropOwn: false });
+    let kb = (await srv!.json<{ kb: Kb }>("GET", `${base}/kb`)).kb;
+    expect(kb.entries.map((e) => e.target)).toEqual(["Mirka"]);
+    const detail = await srv!.json<{
+      book: { phase2: { state: string; stepsDone: number }; askAnew: boolean };
+    }>("GET", base);
+    expect(detail.book.phase2).toMatchObject({ state: "none", stepsDone: 0 });
+    expect(detail.book.askAnew).toBe(true);
+    const history = await srv!.json<{ knowledgeBases: { reason: string }[] }>(
+      "GET",
+      `${base}/history`,
+    );
+    expect(history.knowledgeBases.map((k) => k.reason)).toEqual(["clear"]);
+
+    // An ordinary read after the clear asks every chapter anew.
+    const sent = fake!.requests.length;
+    kb = await run(`${base}/phase2/run`);
+    expect(fake!.requests.length - sent).toBeGreaterThanOrEqual(3);
+    expect(kb.entries.find((e) => e.source === "Mira")?.target).toBe("Mirka");
+    expect((await srv!.json<{ book: { askAnew: boolean } }>("GET", base)).book.askAnew).toBe(false);
+
+    // Restoring the cleared copy ends "ask anew" too.
+    await srv!.json("POST", `${base}/kb/clear`, { dropOwn: false });
+    const saved = await srv!.json<{ knowledgeBases: { id: string }[] }>("GET", `${base}/history`);
+    await srv!.json("POST", `${base}/history/knowledge/${saved.knowledgeBases.at(-1)!.id}/restore`);
+    const restored = await srv!.json<{ book: { askAnew: boolean; phase2: { state: string } } }>(
+      "GET",
+      base,
+    );
+    expect(restored.book).toMatchObject({ askAnew: false, phase2: { state: "done" } });
+    expect(
+      (await srv!.call("POST", `${base}/kb/clear`, { dropOwn: false, learn: true })).status,
+    ).toBe(400);
+  });
+
   it("reads the whole book again with fresh answers, keeping your changes, and can go back", async () => {
     const { pid, bookId } = await setup();
     const base = `/api/projects/${pid}/books/${bookId}`;

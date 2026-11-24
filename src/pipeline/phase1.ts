@@ -133,6 +133,9 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
     segmentsAt(targetStructure, alignment.tocDepthTarget).map((s) => [s.id, s]),
   );
 
+  // After the knowledge base was cleared, the models are asked anew instead
+  // of repeating their saved answers; reads saved since are still reused.
+  const fresh = pair.askAnew;
   pair = await app.projects.savePair(pid, {
     ...pair,
     phase1: { ...pair.phase1, state: "running" },
@@ -245,6 +248,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
           answerBudget,
           signal,
           onUsage: job.addUsage,
+          useCache: !fresh,
         });
       // A chapter with many names can need more room than expected.
       const res = await withRoomToGrow(readTarget, 2000 + estimateTokens(t.sourceText), call, () =>
@@ -377,6 +381,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
         validate: validateFor(ids),
         signal,
         onUsage: job.addUsage,
+        useCache: !fresh,
       });
       return res.value.decisions;
     } catch (error) {
@@ -466,6 +471,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
             answerBudget,
             signal: job.signal,
             onUsage: job.addUsage,
+            useCache: !fresh,
           });
         style = (await withRoomToGrow(mergeTarget, 3000, call)).value;
         await writeJson(file, StyleFile, { schemaVersion: 1, inputsHash: hash, output: style });
@@ -512,6 +518,7 @@ export async function phase1Job(app: AppContext, job: JobContext): Promise<void>
       finishedAt: nowIso(),
       entries: kb.entries.length,
     },
+    askAnew: false,
   });
   app.events.changed(pid, "kb", pairId);
   app.events.changed(pid, "pairs", pairId);

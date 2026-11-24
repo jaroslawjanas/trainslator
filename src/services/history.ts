@@ -372,6 +372,7 @@ export async function restoreKnowledge(
       finishedAt: saved.phase2.finishedAt,
       stepsDone: saved.phase2.stepsDone,
     },
+    askAnew: false,
   });
 }
 

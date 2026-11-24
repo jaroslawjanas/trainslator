@@ -16,6 +16,12 @@ import {
 } from "../../services/kb.ts";
 import { askAboutEntry } from "../../services/kb-ask.ts";
 import {
+  clearKnowledge,
+  pairKnowledgeView,
+  restorePairKnowledge,
+} from "../../services/kb-reset.ts";
+import { loadAlignment } from "../../services/pairs.ts";
+import {
   KbEntry,
   KbKind,
   KbStatus,
@@ -142,6 +148,50 @@ export function kbRoutes(app: AppContext, kind: "pair" | "book"): Hono {
     changed(s);
     return c.json({ kb });
   });
+
+  // Start over: save a copy, empty the knowledge base; for a pair, optionally learn again.
+  r.post(`/:pid/${segment}/:id/kb/clear`, async (c) => {
+    const s = scope(c);
+    const body = await jsonBody(
+      c,
+      z.object({ dropOwn: z.boolean(), learn: z.boolean().default(false) }),
+    );
+    if (body.learn) {
+      if (kind !== "pair")
+        throw new HttpError(400, "bad_request", "Read the whole book again from Reading.");
+      // Everything Learning needs is checked before anything is cleared.
+      if ((await loadAlignment(app, s.pid, s.id)).status !== "confirmed")
+        throw new HttpError(409, "not_confirmed", "Confirm the chapter alignment first.");
+      app.settings.target("phase1.read");
+      app.settings.target("phase1.merge");
+    }
+    await clearKnowledge(app, s, { dropOwn: body.dropOwn });
+    changed(s);
+    app.events.changed(s.pid, kind === "pair" ? "pairs" : "books", s.id);
+    if (!body.learn) return c.json({ ok: true, job: null });
+    const job = app.runner.start({
+      type: "phase1",
+      projectId: s.pid,
+      targetKind: "pair",
+      targetId: s.id,
+    });
+    return c.json({ ok: true, job }, 202);
+  });
+
+  if (kind === "pair") {
+    r.get(`/:pid/${segment}/:id/kb/history`, async (c) => {
+      const s = scope(c);
+      return c.json(await pairKnowledgeView(app, s.pid, s.id));
+    });
+
+    r.post(`/:pid/${segment}/:id/kb/history/:kid/restore`, async (c) => {
+      const s = scope(c);
+      await restorePairKnowledge(app, s.pid, s.id, idParam(c, "kid"));
+      changed(s);
+      app.events.changed(s.pid, "pairs", s.id);
+      return c.json({ ok: true });
+    });
+  }
 
   return r;
 }

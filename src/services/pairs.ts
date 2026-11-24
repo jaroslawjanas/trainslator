@@ -84,6 +84,7 @@ export async function importPair(
     phase1: { state: "none", finishedAt: null, entries: null },
     fromBook: null,
     filesChangedAt: null,
+    askAnew: false,
   };
   await writeFileAtomic(app.paths.pairEpub(pid, pair.id, "source"), files.source.bytes);
   await writeFileAtomic(app.paths.pairEpub(pid, pair.id, "target"), files.target.bytes);

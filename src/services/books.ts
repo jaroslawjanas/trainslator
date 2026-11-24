@@ -62,6 +62,7 @@ export async function importBook(
     phase2: { state: "none", finishedAt: null, stepsDone: 0 },
     phase3: { state: "none", finishedAt: null },
     build: { builtAt: null, fileName: null },
+    askAnew: false,
   };
   await writeFileAtomic(app.paths.bookEpub(pid, book.id), file.bytes);
   await writeJson(app.paths.bookStructure(pid, book.id), EpubStructure, structure);

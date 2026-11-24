@@ -79,7 +79,7 @@ export interface SavedKnowledgeView {
   id: string;
   number: number;
   savedAt: string;
-  reason: "rebuild" | "restore";
+  reason: "rebuild" | "restore" | "clear";
   entries: number;
   open: number;
   locked: number;

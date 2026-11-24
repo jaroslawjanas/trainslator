@@ -175,6 +175,33 @@ async function oncePerJob(
   await writeJson(file, StartMarker, { jobId });
 }
 
+/**
+ * Starts the book's knowledge base over: saves a copy in History, removes
+ * phase 2's chapter notes and leaves an empty knowledge base, with your own
+ * changes unless `dropOwn`. Used by "Clear" and by reading the whole book again.
+ */
+export async function resetBookKnowledge(
+  app: AppContext,
+  pid: string,
+  bookId: string,
+  options: { reason: "rebuild" | "clear"; dropOwn: boolean },
+): Promise<void> {
+  const project = await app.projects.get(pid);
+  const book = await app.projects.book(pid, bookId);
+  await saveKnowledge(app, pid, bookId, options.reason);
+  if (options.dropOwn) await removePath(app.paths.bookKbOverrides(pid, bookId));
+  await dropFrom(app, pid, bookId, 0);
+  await writeJson(
+    app.paths.bookKb(pid, bookId),
+    Kb,
+    applyOverrides(
+      emptyKb("book", book.title),
+      await readOverrides(app, pid, bookId),
+      project.sourceLang,
+    ),
+  );
+}
+
 /** Removes everything from step `from` on (for "re-run from chapter k"). */
 async function dropFrom(app: AppContext, pid: string, bookId: string, from: number): Promise<void> {
   const total = await committedSteps(app, pid, bookId);
@@ -253,23 +280,16 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
   const params = job.job.params;
   const fromStep = typeof params.fromStep === "number" ? params.fromStep : null;
   const rebuild = params.rebuild === true;
-  // Reading again (all of it, from a chapter, or just the review) asks the
-  // models anew instead of reusing saved answers to the same requests.
-  const fresh = rebuild || fromStep !== null || params.again === true;
+  // Reading again (all of it, from a chapter, or just the review), or after
+  // the knowledge base was cleared, asks the models anew instead of reusing
+  // saved answers to the same requests.
+  const fresh = rebuild || fromStep !== null || params.again === true || book.askAnew;
   await oncePerJob(app, pid, bookId, job.job.id, async () => {
     if (rebuild) {
-      await saveKnowledge(app, pid, bookId, "rebuild");
-      if (params.dropOwn === true) await removePath(app.paths.bookKbOverrides(pid, bookId));
-      await dropFrom(app, pid, bookId, 0);
-      await writeJson(
-        app.paths.bookKb(pid, bookId),
-        Kb,
-        applyOverrides(
-          emptyKb("book", book.title),
-          await readOverrides(app, pid, bookId),
-          project.sourceLang,
-        ),
-      );
+      await resetBookKnowledge(app, pid, bookId, {
+        reason: "rebuild",
+        dropOwn: params.dropOwn === true,
+      });
       app.events.changed(pid, "kb", bookId);
     } else if (fromStep !== null) {
       await dropFrom(app, pid, bookId, fromStep);
@@ -527,6 +547,7 @@ export async function phase2Job(app: AppContext, job: JobContext): Promise<void>
       finishedAt: nowIso(),
       stepsDone: steps.length,
     },
+    askAnew: false,
   });
   app.events.changed(pid, "kb", bookId);
   app.events.changed(pid, "books", bookId);
