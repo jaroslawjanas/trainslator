@@ -96,7 +96,7 @@ export function LanguageNotesPanel({
         </Box>
       )}
       {editing ? (
-        <Stack maw={860}>
+        <Stack maw={720}>
           <Textarea
             aria-label="Language notes (Markdown)"
             value={text}
@@ -129,7 +129,7 @@ export function LanguageNotesPanel({
       ) : notes.trim() ? (
         <Markdown source={notes} />
       ) : (
-        <Text size="md" c="dimmed" maw={620}>
+        <Text size="md" c="dimmed" maw={720}>
           No notes yet. Let the AI draft them for {project.targetLangName}, or write your own.
         </Text>
       )}

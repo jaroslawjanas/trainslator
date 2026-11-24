@@ -266,8 +266,8 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
   }, [data]);
   if (!data) return <Loader size="sm" />;
   return (
-    <Stack maw={860}>
-      <Text size="sm" c="dimmed">
+    <Stack>
+      <Text size="sm" c="dimmed" maw={720}>
         The book's title and the labels in its table of contents. Labels that match a chapter
         heading reuse the heading's translation.
       </Text>
@@ -411,8 +411,8 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
       .join(" ") || null;
 
   return (
-    <Stack maw={1080}>
-      <Text size="sm" c="dimmed">
+    <Stack>
+      <Text size="sm" c="dimmed" maw={720}>
         Names and terms the AI had to invent while translating, because no knowledge base had them.
         Later chunks reuse them. Edit a term to change how later chunks translate it (passages
         already translated keep the old wording; change those with search and replace in Review).
@@ -727,7 +727,7 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
         <Tabs.Panel value="review">
           {chapters.isLoading && <Loader size="sm" />}
           {chapters.data && list.length === 0 && (
-            <Alert color="gray" maw={620}>
+            <Alert color="gray" maw={720}>
               Nothing is translated yet. Start the translation above; chapters appear here as
               they're done.
             </Alert>

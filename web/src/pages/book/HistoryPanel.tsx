@@ -266,7 +266,7 @@ export function HistoryPanel({ pid, bookId }: { pid: string; bookId: string }) {
     }
   };
   return (
-    <Box maw={900}>
+    <Box maw={720}>
       <Group gap="md" mb="xl" align="center">
         <Text size="md" style={{ flex: "1 1 420px" }}>
           {!current

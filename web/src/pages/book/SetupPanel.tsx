@@ -84,7 +84,7 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
     .reduce((n, s) => n + s.words, 0);
 
   return (
-    <Box maw={980}>
+    <Box>
       <Text size="md" c="dimmed" mb="xl">
         {displayTitle(book.title)}: {plural(structure.totalWords, "word")} in{" "}
         {plural(structure.docs.length, "file")}, EPUB {structure.version}, from{" "}
@@ -101,7 +101,7 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
             base only.
           </Text>
         ) : (
-          <Stack gap={6}>
+          <Stack gap={6} maw={720}>
             {pairIds.map((id, i) => (
               <Group key={id} gap="xs" wrap="nowrap">
                 <Checkbox

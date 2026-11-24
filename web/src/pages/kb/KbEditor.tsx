@@ -117,7 +117,7 @@ function StyleRules({
     }
   };
   return (
-    <Stack maw={860}>
+    <Stack maw={720}>
       <Text size="sm" c="dimmed">
         General conventions the translation follows: punctuation, register, how foreign words or
         units are handled. The most important come first.
@@ -529,7 +529,7 @@ export function KbEditor({
           <StyleRules rules={data.kb.styleRules} base={base} onChange={update} />
         </Tabs.Panel>
         <Tabs.Panel value="preview">
-          <Stack maw={980}>
+          <Stack>
             <Text size="sm" c="dimmed">
               Exactly what goes into the requests
               {preview.data ? `, about ${preview.data.tokens.toLocaleString()} tokens` : ""}.

@@ -216,7 +216,7 @@ export function PairReader({
             onChange={(e) => setShowTags(e.currentTarget.checked)}
           />
         </Group>
-        <Text size="sm" c="dimmed" mb="md" maw={760}>
+        <Text size="sm" c="dimmed" mb="md" maw={720}>
           Passages are lined up by their length and the names they share, so a row can pair passages
           that don't belong together. If the two sides drift apart for a whole chapter, the chapters
           don't match, or the text of one book is damaged.

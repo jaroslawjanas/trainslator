@@ -321,7 +321,7 @@ function ProjectOptions({ detail }: { detail: ProjectDetail }) {
         contextTo={`/projects/${project.id}`}
         title="Project settings"
       />
-      <Box maw={640}>
+      <Box maw={720}>
         <Section title="Name">
           <Group align="flex-end">
             <TextInput

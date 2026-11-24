@@ -188,7 +188,7 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
                     </Group>
                   </Accordion.Control>
                   <Accordion.Panel>
-                    <Stack gap="sm" maw={820}>
+                    <Stack gap="sm" maw={720}>
                       <Text className="tr-prose" size="md">
                         {s.synopsis || "No synopsis."}
                       </Text>

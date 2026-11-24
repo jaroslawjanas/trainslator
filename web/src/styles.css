@@ -927,7 +927,7 @@ a.tr-row-title:hover {
   font-family: var(--tr-serif);
   font-size: 1.0625rem;
   line-height: 1.65;
-  max-width: 44rem;
+  max-width: 45rem;
 }
 
 .tr-prose h1,

@@ -79,7 +79,7 @@ export function UsagePanel({ project }: { project: Project }) {
       {isLoading && <Loader size="sm" />}
       {error && <Alert color="red">{(error as Error).message}</Alert>}
       {data && (
-        <Box maw={1100}>
+        <Box>
           <SimpleGrid cols={{ base: 2, md: 5 }} spacing="xl" mb={40}>
             <Stat value={fmt(data.total.calls)} label="requests" />
             <Stat value={fmt(data.total.promptTokens)} label="input tokens" />

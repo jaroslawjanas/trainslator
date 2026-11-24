@@ -96,9 +96,9 @@ export function SettingsPage() {
           <Tabs.Tab value="steps">Models for each step</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="connections">
-          <Box maw={1100}>
+          <Box>
             {settings.connections.length === 0 && (
-              <Text size="md" c="dimmed" maw={640}>
+              <Text size="md" c="dimmed" maw={720}>
                 No connections yet. Add one for an OpenAI-compatible API (OpenAI, OpenRouter,
                 DeepSeek, Ollama, vLLM and others), then add the models you want to use.
               </Text>
@@ -226,7 +226,7 @@ export function SettingsPage() {
           </Box>
         </Tabs.Panel>
         <Tabs.Panel value="steps">
-          <Stack maw={1100}>
+          <Stack>
             <StepsPanel settings={settings} steps={data.steps} onSaved={update} />
           </Stack>
         </Tabs.Panel>

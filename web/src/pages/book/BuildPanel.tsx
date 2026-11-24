@@ -123,7 +123,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
 
       {r && (
         <Section title="Last build" description={`Built ${formatDate(r.builtAt)}.`}>
-          <Stack gap={8} maw={760}>
+          <Stack gap={8} maw={720}>
             {r.newXmlProblems.length === 0 ? (
               <Check ok>
                 All {plural(r.changedFiles.length, "changed file")} are well-formed XML.
@@ -181,7 +181,7 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
           title="Use as a reference pair"
           description="When the book is finished, other books in this project can learn from it as from a published translation."
         >
-          <Stack gap="sm" maw={760}>
+          <Stack gap="sm" maw={720}>
             <Text size="sm">
               The pair gets the original, this build as the translation, and the book's knowledge
               base. The book itself stays as it is unless you choose to remove it.

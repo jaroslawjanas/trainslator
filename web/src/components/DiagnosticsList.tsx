@@ -8,7 +8,7 @@ export function DiagnosticsList({ diagnostics }: { diagnostics: Diagnostic[] }) 
     (a, b) => Number(a.level === "info") - Number(b.level === "info"),
   );
   return (
-    <Stack gap={8} maw={760}>
+    <Stack gap={8} maw={720}>
       {sorted.map((d) => (
         <Group
           key={`${d.code}:${d.docIndex ?? "-"}:${d.message}`}

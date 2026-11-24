@@ -140,7 +140,7 @@ function NewProjectModal({ opened, onClose }: { opened: boolean; onClose: () => 
 
 function FirstSteps({ onCreate }: { onCreate: () => void }) {
   return (
-    <Box maw={620}>
+    <Box maw={720}>
       <Text size="lg" className="serif" mb="md">
         Three steps to a first translation:
       </Text>
@@ -183,7 +183,7 @@ export function ProjectsPage() {
       {error && <Alert color="red">{(error as Error).message}</Alert>}
       {data && data.projects.length === 0 && <FirstSteps onCreate={() => setOpen(true)} />}
       {data && data.projects.length > 0 && (
-        <Box maw={860} className="tr-list-flush">
+        <Box className="tr-list-flush">
           {data.projects.map((p) => {
             const contents = [
               p.bookCount > 0 ? plural(p.bookCount, "book") : null,
