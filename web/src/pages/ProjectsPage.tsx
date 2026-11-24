@@ -5,7 +5,6 @@ import {
   Button,
   Group,
   List,
-  Loader,
   Modal,
   Select,
   Stack,
@@ -19,6 +18,7 @@ import { Link, useNavigate } from "react-router";
 import { languageDisplayName } from "../../../src/shared/languages.ts";
 import { get, post } from "../api/client.ts";
 import type { Project, ProjectSummary } from "../api/types.ts";
+import { ListLoading } from "../components/Loading.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { listText, plural, relativeTime } from "../lib/format.ts";
 
@@ -179,7 +179,7 @@ export function ProjectsPage() {
         description="Each project translates books from one language into another, learning from the reference pairs you give it."
         actions={<Button onClick={() => setOpen(true)}>New project</Button>}
       />
-      {isLoading && <Loader size="sm" />}
+      {isLoading && <ListLoading rows={3} />}
       {error && <Alert color="red">{(error as Error).message}</Alert>}
       {data && data.projects.length === 0 && <FirstSteps onCreate={() => setOpen(true)} />}
       {data && data.projects.length > 0 && (

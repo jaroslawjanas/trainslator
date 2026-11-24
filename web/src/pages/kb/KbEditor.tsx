@@ -5,7 +5,6 @@ import {
   Button,
   Code,
   Group,
-  Loader,
   Portal,
   ScrollArea,
   SegmentedControl,
@@ -39,6 +38,7 @@ import {
 } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ListLoading } from "../../components/Loading.tsx";
 import { HEADER_STATUS } from "../../components/PageHeader.tsx";
 import { count, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
@@ -380,7 +380,7 @@ export function KbEditor({
       .sort((a, b) => a.source.localeCompare(b.source));
   }, [data, search, kind, status]);
 
-  if (isLoading) return <Loader size="sm" />;
+  if (isLoading) return <ListLoading rows={8} />;
   if (error || !data) return <Alert color="red">{(error as Error)?.message}</Alert>;
 
   const update = (kb: Kb) => {

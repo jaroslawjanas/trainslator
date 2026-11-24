@@ -1,7 +1,8 @@
-import { Alert, Loader } from "@mantine/core";
+import { Alert } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router";
 import { get } from "../api/client.ts";
+import { ListLoading } from "../components/Loading.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { displayTitle } from "../lib/format.ts";
 import { BOOK_STAGES, defaultBookStage } from "../lib/stages.ts";
@@ -40,7 +41,7 @@ export function BookPage() {
     queryKey: ["book", bookId],
     queryFn: () => get<BookDetail>(`/api/projects/${pid}/books/${bookId}`),
   });
-  if (isLoading) return <Loader size="sm" mt="xl" />;
+  if (isLoading) return <ListLoading mt="xl" />;
   if (error || !data)
     return (
       <Alert color="red" mt="xl">

@@ -5,7 +5,6 @@ import {
   Button,
   Checkbox,
   Group,
-  ScrollArea,
   SegmentedControl,
   Select,
   Stack,
@@ -208,93 +207,89 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
           />
         }
       >
-        <ScrollArea.Autosize mah={420}>
-          <Table>
-            <Table.Tbody>
-              {segments.map((s) => (
-                <Table.Tr key={s.id}>
-                  <Table.Td w={36}>
-                    <Checkbox
-                      aria-label={`Read ${displayTitle(s.title)}`}
-                      checked={setup.phase2Segments.includes(s.id)}
-                      onChange={(e) =>
-                        setSetup({
-                          ...setup,
-                          phase2Segments: e.currentTarget.checked
-                            ? segments
-                                .filter((x) => x.id === s.id || setup.phase2Segments.includes(x.id))
-                                .map((x) => x.id)
-                            : setup.phase2Segments.filter((x) => x !== s.id),
-                        })
-                      }
-                    />
-                  </Table.Td>
-                  <Table.Td>
-                    <div className="tr-term">{displayTitle(s.title)}</div>
-                    <Text size="sm" lineClamp={1}>
-                      {s.preview.start}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td w={120} ta="right" className="num">
-                    <Text size="sm">{s.words.toLocaleString()}</Text>
-                    <Text size="xs" c="dimmed">
-                      {s.linear ? GUESS_TEXT[s.guess] || "words" : "outside reading order"}
-                    </Text>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea.Autosize>
+        <Table>
+          <Table.Tbody>
+            {segments.map((s) => (
+              <Table.Tr key={s.id}>
+                <Table.Td w={36}>
+                  <Checkbox
+                    aria-label={`Read ${displayTitle(s.title)}`}
+                    checked={setup.phase2Segments.includes(s.id)}
+                    onChange={(e) =>
+                      setSetup({
+                        ...setup,
+                        phase2Segments: e.currentTarget.checked
+                          ? segments
+                              .filter((x) => x.id === s.id || setup.phase2Segments.includes(x.id))
+                              .map((x) => x.id)
+                          : setup.phase2Segments.filter((x) => x !== s.id),
+                      })
+                    }
+                  />
+                </Table.Td>
+                <Table.Td>
+                  <div className="tr-term">{displayTitle(s.title)}</div>
+                  <Text size="sm" lineClamp={1}>
+                    {s.preview.start}
+                  </Text>
+                </Table.Td>
+                <Table.Td w={120} ta="right" className="num">
+                  <Text size="sm">{s.words.toLocaleString()}</Text>
+                  <Text size="xs" c="dimmed">
+                    {s.linear ? GUESS_TEXT[s.guess] || "words" : "outside reading order"}
+                  </Text>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
       </Section>
 
       <Section
         title="Files to translate"
         description="Every file is translated unless you keep it in the original, for example an index or an appendix that stays in the original language."
       >
-        <ScrollArea.Autosize mah={360}>
-          <Table>
-            <Table.Tbody>
-              {structure.docs.map((d) => {
-                const notes = [
-                  plural(d.words, "word"),
-                  d.inSpine ? null : "not in the reading order",
-                  d.isNav ? "navigation" : null,
-                  d.unsafeUnits > 0
-                    ? `${plural(d.unsafeUnits, "paragraph")} with broken markup stay untranslated`
-                    : null,
-                ].filter(Boolean);
-                return (
-                  <Table.Tr key={d.index}>
-                    <Table.Td>
-                      <Text size="sm" className="mono">
-                        {d.href.split("/").pop()}
-                      </Text>
-                      <Text size="xs" c="dimmed">
-                        {notes.join(", ")}
-                      </Text>
-                    </Table.Td>
-                    <Table.Td w={170}>
-                      <Switch
-                        size="xs"
-                        label="Keep original"
-                        checked={setup.keepDocs.includes(d.index)}
-                        onChange={(e) =>
-                          setSetup({
-                            ...setup,
-                            keepDocs: e.currentTarget.checked
-                              ? [...setup.keepDocs, d.index]
-                              : setup.keepDocs.filter((x) => x !== d.index),
-                          })
-                        }
-                      />
-                    </Table.Td>
-                  </Table.Tr>
-                );
-              })}
-            </Table.Tbody>
-          </Table>
-        </ScrollArea.Autosize>
+        <Table>
+          <Table.Tbody>
+            {structure.docs.map((d) => {
+              const notes = [
+                plural(d.words, "word"),
+                d.inSpine ? null : "not in the reading order",
+                d.isNav ? "navigation" : null,
+                d.unsafeUnits > 0
+                  ? `${plural(d.unsafeUnits, "paragraph")} with broken markup stay untranslated`
+                  : null,
+              ].filter(Boolean);
+              return (
+                <Table.Tr key={d.index}>
+                  <Table.Td>
+                    <Text size="sm" className="mono">
+                      {d.href.split("/").pop()}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      {notes.join(", ")}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td w={170}>
+                    <Switch
+                      size="xs"
+                      label="Keep original"
+                      checked={setup.keepDocs.includes(d.index)}
+                      onChange={(e) =>
+                        setSetup({
+                          ...setup,
+                          keepDocs: e.currentTarget.checked
+                            ? [...setup.keepDocs, d.index]
+                            : setup.keepDocs.filter((x) => x !== d.index),
+                        })
+                      }
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
       </Section>
 
       {dirtySetup && (

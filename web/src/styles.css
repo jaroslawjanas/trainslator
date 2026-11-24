@@ -536,6 +536,11 @@ a.tr-context:hover {
   touch-action: none;
 }
 
+/* After the last column there is no gap to sit in: keep the handle at the page's edge. */
+.tr-cmp-title:last-child .tr-cmp-resize {
+  right: -5px;
+}
+
 .tr-cmp-resize::after {
   content: "";
   position: absolute;

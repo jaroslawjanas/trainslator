@@ -214,6 +214,7 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
 
   const views = (
     <SegmentedControl
+      size="sm"
       value={reading ? "read" : "table"}
       onChange={(v) => (v === "read" ? read(params.get("row") ?? undefined) : setParams({}))}
       data={[
@@ -276,7 +277,7 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
           </Group>
         )}
         <Group gap="xs">
-          <Group gap={6} mr="xs">
+          <Group gap={6} mr="xs" h={36}>
             <StageMark state={al.status === "confirmed" && !dirty ? "done" : "none"} />
             <Text size="sm" c={al.status === "confirmed" && !dirty ? undefined : "dimmed"}>
               {statusText}

@@ -1,4 +1,4 @@
-import { Alert, Box, Button, Group, Loader, Stack, Table, Tabs, Text } from "@mantine/core";
+import { Alert, Box, Button, Group, Stack, Table, Tabs, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -6,6 +6,7 @@ import { useNavigate, useParams } from "react-router";
 import type { Connection, Model, Settings } from "../../../src/shared/schemas/settings.ts";
 import { del, get, put } from "../api/client.ts";
 import type { SettingsResponse } from "../api/types.ts";
+import { ListLoading } from "../components/Loading.tsx";
 import { PageHeader } from "../components/PageHeader.tsx";
 import { ConnectionModal } from "./settings/ConnectionModal.tsx";
 import { ModelModal } from "./settings/ModelModal.tsx";
@@ -51,7 +52,7 @@ export function SettingsPage() {
   });
   const [testing, setTesting] = useState<{ connection: Connection; model: Model } | null>(null);
 
-  if (isLoading) return <Loader size="sm" mt="xl" />;
+  if (isLoading) return <ListLoading mt="xl" />;
   if (error || !data)
     return (
       <Alert color="red" mt="xl">

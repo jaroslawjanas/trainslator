@@ -1,9 +1,10 @@
-import { Accordion, Alert, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { Accordion, Alert, Box, Button, Group, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ListLoading } from "../../components/Loading.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
@@ -141,7 +142,7 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
         title="Chapters"
         description="What the AI noted in each chapter. Open a chapter to see the changes it made to the knowledge base."
       >
-        {steps.isLoading && <Loader size="sm" />}
+        {steps.isLoading && <ListLoading rows={8} />}
         {steps.data && list.length === 0 && (
           <Text size="md" c="dimmed">
             No chapters read yet.

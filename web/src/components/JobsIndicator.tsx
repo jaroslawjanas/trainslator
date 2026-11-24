@@ -15,8 +15,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { get, post } from "../api/client.ts";
 import { jobLabel } from "../api/live.ts";
-import type { Job } from "../api/types.ts";
-import { plural, relativeTime } from "../lib/format.ts";
+import type { Job, ProjectDetail } from "../api/types.ts";
+import { displayTitle, plural, relativeTime } from "../lib/format.ts";
 import { ACTIVE_JOB } from "../lib/stages.ts";
 import { StageMark } from "./StageMark.tsx";
 
@@ -78,6 +78,28 @@ function detailText(job: Job): string {
   return parts.join(". ");
 }
 
+/** The book, pair or project a job was for, by its title. */
+function JobTarget({ job }: { job: Job }) {
+  // The same query the project pages use, so this is read from their cache.
+  const { data } = useQuery({
+    queryKey: ["project", job.projectId],
+    queryFn: () => get<ProjectDetail>(`/api/projects/${job.projectId}`),
+  });
+  if (!data) return null;
+  const title =
+    job.targetKind === "book"
+      ? data.books.find((b) => b.id === job.targetId)?.title
+      : job.targetKind === "pair"
+        ? data.pairs.find((p) => p.id === job.targetId)?.title
+        : data.project.name;
+  if (!title) return null;
+  return (
+    <Text className="serif" size="md" lineClamp={1}>
+      {displayTitle(title)}
+    </Text>
+  );
+}
+
 /** One job: what it is, how far it got, and the controls that apply. */
 export function JobRow({ job, showTitle = true }: { job: Job; showTitle?: boolean }) {
   const client = useQueryClient();
@@ -99,6 +121,7 @@ export function JobRow({ job, showTitle = true }: { job: Job; showTitle?: boolea
   const when = job.finishedAt ?? job.startedAt ?? job.createdAt;
   return (
     <Stack gap={6}>
+      {showTitle && <JobTarget job={job} />}
       <Group justify="space-between" wrap="nowrap" gap="xs">
         <Text size="sm" lineClamp={1}>
           {showTitle && (

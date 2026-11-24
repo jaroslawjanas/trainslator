@@ -1,4 +1,4 @@
-import { Anchor, Badge, Box, Button, Group, Loader, Stack, Text } from "@mantine/core";
+import { Anchor, Badge, Box, Button, Group, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconDownload } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ListLoading } from "../../components/Loading.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { formatDate, listText, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
@@ -251,7 +252,7 @@ export function HistoryPanel({ pid, bookId }: { pid: string; bookId: string }) {
   const busy = (jobs.data?.jobs ?? []).some(
     (j) => j.targetId === bookId && ACTIVE_JOB.includes(j.status),
   );
-  if (history.isLoading || !history.data) return <Loader size="sm" />;
+  if (history.isLoading || !history.data) return <ListLoading rows={3} />;
   const { translations, current, knowledgeBases, currentKnowledge } = history.data;
   const savedAs = translations.find((t) => t.id === current?.savedAs);
   const saveNow = async () => {

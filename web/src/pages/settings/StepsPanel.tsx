@@ -331,6 +331,7 @@ export function StepsPanel({
           borderTop: "1px solid var(--tr-rule)",
           position: "sticky",
           bottom: 0,
+          zIndex: 3,
           background: "var(--tr-paper)",
         }}
       >

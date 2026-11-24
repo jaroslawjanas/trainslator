@@ -4,6 +4,7 @@ import { useState } from "react";
 import { get } from "../../api/client.ts";
 import type { Job } from "../../api/types.ts";
 import { useJobActivity } from "../../components/JobDetails.tsx";
+import { ListLoading } from "../../components/Loading.tsx";
 import { Section } from "../../components/PageHeader.tsx";
 import { StageMark } from "../../components/StageMark.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
@@ -209,7 +210,7 @@ export function Phase1Chapters({
           : "The chapters that are read, from the alignment."
       }
     >
-      {chapters.isLoading && <Loader size="sm" />}
+      {chapters.isLoading && <ListLoading rows={8} />}
       {list.length > 0 && (
         <Table.ScrollContainer minWidth={640}>
           <Table highlightOnHover verticalSpacing={8}>

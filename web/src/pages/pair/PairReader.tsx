@@ -7,6 +7,7 @@ import type { AlignUnit } from "../../../../src/shared/schemas/alignment.ts";
 import type { Segment } from "../../../../src/shared/schemas/epub.ts";
 import { get } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
+import { TextLoading } from "../../components/Loading.tsx";
 import { type PlaceholderInfo, UnitText } from "../../components/PlaceholderText.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { useSourceName } from "../ProjectPage.tsx";
@@ -99,10 +100,10 @@ export function PairReader({
   useWidePage(true);
   const source = useSourceName(pid);
   const [showTags, setShowTags] = useState(false);
-  const at = Math.max(
-    0,
-    units.findIndex((u) => u.id === rowId),
-  );
+  // With no row asked for, open the first one that is used and has text on both sides.
+  const asked = units.findIndex((u) => u.id === rowId);
+  const firstUsed = units.findIndex((u) => u.include && u.source.length > 0 && u.target.length > 0);
+  const at = asked >= 0 ? asked : Math.max(0, firstUsed);
   const unit = units[at];
   const query = useQuery({
     queryKey: ["pair", pairId, "text", unit?.source.join(","), unit?.target.join(",")],
@@ -235,7 +236,7 @@ export function PairReader({
               `: ${plural(query.data.target.passages, "passage")}, ${query.data.target.words.toLocaleString()} words`}
           </div>
         </div>
-        {query.isLoading && <Loader size="sm" />}
+        {query.isLoading && <TextLoading />}
         <div ref={listRef} style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]!;

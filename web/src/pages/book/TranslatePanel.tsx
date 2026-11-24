@@ -3,7 +3,6 @@ import {
   Box,
   Button,
   Group,
-  Loader,
   SegmentedControl,
   Stack,
   Switch,
@@ -22,6 +21,7 @@ import { languageDisplayName } from "../../../../src/shared/languages.ts";
 import type { KbEntry } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ListLoading, TextLoading } from "../../components/Loading.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
@@ -186,7 +186,7 @@ function Spread({
           )}
         </Group>
       </Group>
-      {isLoading && <Loader size="sm" />}
+      {isLoading && <TextLoading />}
       {data && units.length === 0 && (
         <Text size="md" c="dimmed" py="xl">
           {filter === "all" ? "This chapter has no text." : "Nothing here in this chapter."}
@@ -264,7 +264,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
       setItems(Object.fromEntries(data.items.map((i) => [i.key, i.translation ?? ""])));
     }
   }, [data]);
-  if (!data) return <Loader size="sm" />;
+  if (!data) return <ListLoading rows={4} />;
   return (
     <Stack>
       <Text size="sm" c="dimmed" maw={720}>
@@ -379,7 +379,7 @@ function GlossaryPanel({ pid, bookId }: { pid: string; bookId: string }) {
   });
   const [editing, setEditing] = useState<{ index: number; term: CoinedTerm } | null>(null);
   const [moving, setMoving] = useState<{ index: number; term: CoinedTerm } | null>(null);
-  if (!data) return <Loader size="sm" />;
+  if (!data) return <ListLoading rows={4} />;
 
   const base = `/api/projects/${pid}/books/${bookId}/glossary`;
   const call = async (fn: () => Promise<{ terms: CoinedTerm[] }>, message: string) => {
@@ -725,7 +725,7 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
           <Tabs.Tab value="glossary">Coined terms</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="review">
-          {chapters.isLoading && <Loader size="sm" />}
+          {chapters.isLoading && <ListLoading rows={8} />}
           {chapters.data && list.length === 0 && (
             <Alert color="gray" maw={720}>
               Nothing is translated yet. Start the translation above; chapters appear here as

@@ -1,9 +1,10 @@
-import { Alert, Box, Button, Loader, SimpleGrid, Table, Text } from "@mantine/core";
+import { Alert, Box, Button, SimpleGrid, Table, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { STEP_INFO, type Step } from "../../../../src/shared/steps.ts";
 import { get, post } from "../../api/client.ts";
 import type { Project, Usage, UsageResponse } from "../../api/types.ts";
+import { ListLoading } from "../../components/Loading.tsx";
 import { PageHeader, Section } from "../../components/PageHeader.tsx";
 import { formatDate } from "../../lib/format.ts";
 
@@ -76,7 +77,7 @@ export function UsagePanel({ project }: { project: Project }) {
           </Button>
         }
       />
-      {isLoading && <Loader size="sm" />}
+      {isLoading && <ListLoading />}
       {error && <Alert color="red">{(error as Error).message}</Alert>}
       {data && (
         <Box>

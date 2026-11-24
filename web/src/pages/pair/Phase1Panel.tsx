@@ -1,9 +1,10 @@
-import { Alert, Anchor, Loader } from "@mantine/core";
+import { Alert, Anchor } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { get, post } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { ListLoading } from "../../components/Loading.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
@@ -30,7 +31,7 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
   });
   const settings = useSettings();
   const jobs = useJobs();
-  if (pair.isLoading) return <Loader size="sm" />;
+  if (pair.isLoading) return <ListLoading />;
   if (!pair.data) return <Alert color="red">Couldn't load the pair.</Alert>;
   const job = (jobs.data?.jobs ?? []).find((j) => j.targetId === pairId && j.type === "phase1");
   const { phase1, fromBook } = pair.data.pair;

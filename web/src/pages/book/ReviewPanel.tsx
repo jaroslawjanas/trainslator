@@ -4,7 +4,6 @@ import {
   Button,
   CloseButton,
   Group,
-  Loader,
   Menu,
   SegmentedControl,
   Select,
@@ -31,6 +30,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { del, get, put } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
+import { ListLoading, TextLoading } from "../../components/Loading.tsx";
 import { type Highlight, UnitText } from "../../components/PlaceholderText.tsx";
 import { displayTitle, formatDate, plural } from "../../lib/format.ts";
 import { useSourceName } from "../ProjectPage.tsx";
@@ -560,7 +560,7 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
     return () => clearTimeout(t);
   }, [focused]);
 
-  if (chapters.isLoading) return <Loader size="sm" />;
+  if (chapters.isLoading) return <ListLoading rows={8} />;
   if (list.length === 0)
     return (
       <Text size="md" c="dimmed">
@@ -714,7 +714,7 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
             </div>
           ))}
         </div>
-        {review.isLoading && <Loader size="sm" />}
+        {review.isLoading && <TextLoading />}
         {review.data && units.length === 0 && (
           <Text size="md" c="dimmed" py="xl">
             {filter === "different"

@@ -4,7 +4,6 @@ import {
   Button,
   FileInput,
   Group,
-  Loader,
   Modal,
   Stack,
   Switch,
@@ -21,6 +20,7 @@ import type { ProjectOverview } from "../../../src/shared/overview.ts";
 import { del, get, patch, post, upload } from "../api/client.ts";
 import type { Book, Job, Pair, ProjectDetail } from "../api/types.ts";
 import { useJobs } from "../components/JobsIndicator.tsx";
+import { ListLoading } from "../components/Loading.tsx";
 import { PageHeader, Section } from "../components/PageHeader.tsx";
 import { StageMark } from "../components/StageMark.tsx";
 import { displayTitle, plural, withArticle } from "../lib/format.ts";
@@ -412,7 +412,7 @@ export function ProjectPage() {
   const jobs = useJobs();
   const [pairOpen, setPairOpen] = useState(false);
   const [bookOpen, setBookOpen] = useState(false);
-  if (isLoading) return <Loader size="sm" mt="xl" />;
+  if (isLoading) return <ListLoading mt="xl" />;
   if (error || !data)
     return (
       <Alert color="red" mt="xl">
