@@ -276,7 +276,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
         description={`Original: ${data.title}`}
         value={title}
         onChange={(e) => setTitle(e.currentTarget.value)}
-        styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 16 } }}
+        styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 17 } }}
       />
       <Table>
         <Table.Thead>
@@ -297,7 +297,7 @@ function TocPanel({ pid, bookId }: { pid: string; bookId: string }) {
                   aria-label={`Translation of ${i.source}`}
                   value={items[i.key] ?? ""}
                   onChange={(e) => setItems({ ...items, [i.key]: e.currentTarget.value })}
-                  styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 14 } }}
+                  styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 15 } }}
                 />
               </Table.Td>
             </Table.Tr>

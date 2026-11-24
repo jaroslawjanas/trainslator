@@ -97,7 +97,7 @@ export function UnitRow({
               value={text}
               onChange={(e) => setText(e.currentTarget.value)}
               styles={{
-                input: { fontFamily: "var(--tr-serif)", fontSize: 16, lineHeight: 1.55 },
+                input: { fontFamily: "var(--tr-serif)", fontSize: 17, lineHeight: 1.55 },
               }}
               data-autofocus
             />

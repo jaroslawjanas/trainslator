@@ -131,12 +131,14 @@ export const theme = createTheme({
       h4: { fontSize: "1.0625rem", lineHeight: "1.35" },
     },
   },
+  // Five sizes in all: 13 for details, 15 for the interface and what you read in it,
+  // 17 for book text, 20 for section and row titles, 26 for the page title.
   fontSizes: {
-    xs: "0.75rem",
+    xs: "0.8125rem",
     sm: "0.8125rem",
-    md: "0.875rem",
-    lg: "1rem",
-    xl: "1.125rem",
+    md: "0.9375rem",
+    lg: "1.0625rem",
+    xl: "1.25rem",
   },
   lineHeights: { xs: "1.4", sm: "1.45", md: "1.5", lg: "1.55", xl: "1.6" },
   radius: { xs: "2px", sm: "4px", md: "6px", lg: "10px", xl: "16px" },

@@ -144,7 +144,7 @@ export function RewriteModal({
               end: e.currentTarget.selectionEnd,
             })
           }
-          styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 16, lineHeight: 1.55 } }}
+          styles={{ input: { fontFamily: "var(--tr-serif)", fontSize: 17, lineHeight: 1.55 } }}
         />
         <Group align="flex-end" gap="md" wrap="wrap">
           <Select
