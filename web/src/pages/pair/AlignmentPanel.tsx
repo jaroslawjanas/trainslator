@@ -347,7 +347,11 @@ export function AlignmentPanel({ pid, detail }: { pid: string; detail: PairDetai
                         ? "yellow"
                         : "red";
                 return (
-                  <Table.Tr key={u.id} opacity={u.include ? 1 : 0.6}>
+                  <Table.Tr
+                    key={u.id}
+                    className="tr-align-row"
+                    data-unused={!u.include || undefined}
+                  >
                     <Table.Td>
                       <Checkbox
                         checked={u.include}

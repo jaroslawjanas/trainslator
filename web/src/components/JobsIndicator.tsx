@@ -44,7 +44,6 @@ const STATUS_COLOR: Partial<Record<Job["status"], string>> = {
   failed: "var(--tr-red)",
   done_with_errors: "var(--tr-ochre)",
   interrupted: "var(--tr-ochre)",
-  done: "var(--tr-bookcloth)",
 };
 
 /** Where a job's results are shown. */

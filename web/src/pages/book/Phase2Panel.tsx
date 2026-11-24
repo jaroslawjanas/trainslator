@@ -173,7 +173,7 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
                             </Text>
                           ) : null}
                         </Text>
-                        <Text size="sm" c="dimmed" lineClamp={2} className="serif" mt={2}>
+                        <Text size="md" lineClamp={2} className="serif" mt={2}>
                           {s.synopsis || "No synopsis."}
                         </Text>
                       </Box>

@@ -198,8 +198,8 @@ body {
 }
 
 .tr-mark[data-state="done"] {
-  background: var(--tr-bookcloth);
-  border-color: var(--tr-bookcloth);
+  border: 0;
+  color: var(--tr-graphite);
 }
 
 .tr-mark[data-state="attention"] {
@@ -628,6 +628,11 @@ a.tr-context:hover {
     flex-direction: row;
     opacity: 1;
   }
+}
+
+/* Alignment rows left out of learning. */
+.tr-align-row[data-unused] {
+  background: var(--tr-desk);
 }
 
 .tr-history-entry {

@@ -231,7 +231,7 @@ export function SetupPanel({ pid, detail }: { pid: string; detail: BookDetail })
                   </Table.Td>
                   <Table.Td>
                     <div className="tr-term">{displayTitle(s.title)}</div>
-                    <Text size="xs" c="dimmed" lineClamp={1}>
+                    <Text size="sm" lineClamp={1}>
                       {s.preview.start}
                     </Text>
                   </Table.Td>

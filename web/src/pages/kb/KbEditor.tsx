@@ -294,11 +294,11 @@ function EntryTable({
               </Table.Td>
               <Table.Td style={{ verticalAlign: "top" }}>
                 {e.attributes.length > 0 && (
-                  <Text size="sm" lineClamp={2}>
+                  <Text size="md" lineClamp={2}>
                     {e.attributes.map((a, i) => (
                       <span key={a.key}>
                         {i > 0 ? "; " : ""}
-                        <Text span c="dimmed" size="sm">
+                        <Text span c="dimmed" size="md">
                           {a.key.replaceAll("_", " ")}
                         </Text>{" "}
                         {a.value}
@@ -307,7 +307,7 @@ function EntryTable({
                   </Text>
                 )}
                 {(e.status === "open" ? e.question : e.note) && (
-                  <Text size="sm" c={e.status === "open" ? "yellow" : "dimmed"} lineClamp={2}>
+                  <Text size="md" c={e.status === "open" ? "yellow" : undefined} lineClamp={2}>
                     {e.status === "open" ? e.question : e.note}
                   </Text>
                 )}
