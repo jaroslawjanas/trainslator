@@ -121,13 +121,10 @@ export function Phase2Panel({ pid, detail }: { pid: string; detail: BookDetail }
             finished ? { again: true } : undefined,
           )
         }
-        extra={
-          state !== "none" &&
-          !running && (
-            <Button variant="default" onClick={() => setRebuilding(true)}>
-              Read the whole book again
-            </Button>
-          )
+        secondary={
+          state !== "none"
+            ? [{ label: "Read the whole book again", onClick: () => setRebuilding(true) }]
+            : undefined
         }
       >
         <ModelNote steps={["phase2.chapter", "phase2.review"]} />

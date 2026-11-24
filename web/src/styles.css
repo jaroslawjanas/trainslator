@@ -4,6 +4,7 @@
 :root {
   --tr-desk: #ebeef1;
   --tr-desk-hover: #e1e5ea;
+  --tr-panel: #ebeef1;
   --tr-paper: #ffffff;
   --tr-ink: #1b2433;
   --tr-graphite: #5e6878;
@@ -27,6 +28,7 @@
 [data-mantine-color-scheme="dark"] {
   --tr-desk: #12161c;
   --tr-desk-hover: #1a2028;
+  --tr-panel: #20262f;
   --tr-paper: #181d24;
   --tr-ink: #e4e8ee;
   --tr-graphite: #98a2b3;
@@ -226,9 +228,67 @@ body {
    Page header
    --------------------------------------------------------------------------- */
 .tr-page-header {
-  padding: 28px 0 18px;
-  margin-bottom: 24px;
+  padding: 22px 0 14px;
+  margin-bottom: 20px;
   border-bottom: 1px solid var(--tr-rule);
+}
+
+/* "About this page": the introduction, for when you want it. */
+.tr-about {
+  color: var(--tr-graphite);
+  font-size: var(--mantine-font-size-sm);
+  white-space: nowrap;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+
+.tr-about:hover {
+  color: var(--tr-ink);
+}
+
+/* Beside the title: a page's one-line status and its actions. */
+.tr-header-status {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tr-run-line {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Only the summary gives way when the line is full. */
+.tr-run-line > * {
+  flex-shrink: 0;
+}
+
+.tr-run-line > .tr-run-summary {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A step that hasn't finished cleanly: the whole panel. */
+.tr-run-panel {
+  background: var(--tr-panel);
+  border: 1px solid var(--tr-rule);
+  border-radius: 6px;
+}
+
+.tr-run-details {
+  border: 1px solid var(--tr-rule);
+  border-radius: 6px;
+  padding: var(--mantine-spacing-md);
+}
+
+/* Advice, not a warning: a pencil stroke beside quiet text. */
+.tr-tip {
+  border-left: 3px solid var(--tr-ochre);
+  padding-left: 10px;
 }
 
 .tr-context {

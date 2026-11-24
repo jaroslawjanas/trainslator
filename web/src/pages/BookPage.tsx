@@ -53,13 +53,24 @@ export function BookPage() {
       <Navigate to={`/projects/${pid}/books/${bookId}/${defaultBookStage(data.book)}`} replace />
     );
   const targetName = project.data?.project.targetLangName ?? "target-language";
+  // The introduction is open until the page's step has run; Setup's one line always shows.
+  const about: Record<string, boolean | undefined> = {
+    read: data.book.phase2.state === "none",
+    kb: false,
+    translate: data.book.phase3.state === "none",
+    review: false,
+    build: !data.book.build.builtAt,
+    history: false,
+  };
 
   return (
     <>
       <PageHeader
+        key={def.key}
         context={displayTitle(data.book.title)}
         title={def.label}
         description={DESCRIPTIONS[def.key]?.(targetName, source)}
+        about={about[def.key]}
       />
       {def.key === "setup" && <SetupPanel pid={pid} detail={data} />}
       {def.key === "read" && <Phase2Panel pid={pid} detail={data} />}

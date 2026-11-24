@@ -6,6 +6,7 @@ import {
   Code,
   Group,
   Loader,
+  Portal,
   ScrollArea,
   SegmentedControl,
   Select,
@@ -38,6 +39,7 @@ import {
 } from "../../../../src/shared/schemas/kb.ts";
 import { del, get, post, put } from "../../api/client.ts";
 import { useJobs } from "../../components/JobsIndicator.tsx";
+import { HEADER_STATUS } from "../../components/PageHeader.tsx";
 import { count, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { useProject } from "../ProjectPage.tsx";
@@ -406,13 +408,13 @@ export function KbEditor({
 
   return (
     <>
-      <Group justify="space-between" mb="lg" gap="md">
-        <Text size="md" c="dimmed">
-          {plural(data.kb.entries.length, "entry", "entries")} and{" "}
-          {count(data.kb.styleRules.length, "style rule")}
-          {yours > 0 ? `; ${yours} edited by you` : ""}.
-        </Text>
-        <Group gap="xs">
+      <Portal target={`#${HEADER_STATUS}`}>
+        <Group gap="xs" wrap="nowrap" className="tr-run-line">
+          <Text size="sm" c="dimmed" className="tr-run-summary">
+            {plural(data.kb.entries.length, "entry", "entries")} and{" "}
+            {count(data.kb.styleRules.length, "style rule")}
+            {yours > 0 ? `; ${yours} edited by you` : ""}.
+          </Text>
           {scope === "pair" && saved > 0 && (
             <Button
               variant="subtle"
@@ -443,7 +445,7 @@ export function KbEditor({
           </Tooltip>
           <Button onClick={() => setEditing({ entry: newEntry(), isNew: true })}>Add entry</Button>
         </Group>
-      </Group>
+      </Portal>
       <StartOverModal
         pid={pid}
         scope={scope}
@@ -461,7 +463,7 @@ export function KbEditor({
         />
       )}
       <Tabs defaultValue="entries" keepMounted={false}>
-        <Tabs.List mb="lg">
+        <Tabs.List mb="md">
           <Tabs.Tab value="entries">Entries</Tabs.Tab>
           <Tabs.Tab value="style">Style rules</Tabs.Tab>
           <Tabs.Tab value="preview">As the AI sees it</Tabs.Tab>

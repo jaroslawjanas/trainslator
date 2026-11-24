@@ -109,16 +109,17 @@ export function BuildPanel({ pid, detail }: { pid: string; detail: BookDetail })
             </Button>
           )
         }
-      >
-        <Box mt="md" pl={22}>
-          <Checkbox
-            label="Use the best attempts for passages that still need attention"
-            description={`Otherwise the build stops while any passage needs attention. Broken formatting is repaired, or the ${source} is kept.`}
-            checked={useBest}
-            onChange={(e) => setUseBest(e.currentTarget.checked)}
-          />
-        </Box>
-      </RunPanel>
+        always={
+          <Box mt={built ? 0 : "md"} pl={built ? 0 : 22}>
+            <Checkbox
+              label="Use the best attempts for passages that still need attention"
+              description={`Otherwise the build stops while any passage needs attention. Broken formatting is repaired, or the ${source} is kept.`}
+              checked={useBest}
+              onChange={(e) => setUseBest(e.currentTarget.checked)}
+            />
+          </Box>
+        }
+      />
 
       {r && (
         <Section title="Last build" description={`Built ${formatDate(r.builtAt)}.`}>

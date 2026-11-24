@@ -33,16 +33,24 @@ export function PairPage() {
   const descriptions: Record<string, string> = {
     alignment: `Which chapter of the ${source} book matches which chapter of the translation. Check the rows, read them side by side, untick what learning should skip (front matter, notes, a licence), then confirm.`,
     learn:
-      "The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base.",
+      "The AI reads every included chapter pair, notes the translator's choices, and merges them into this pair's knowledge base. Chapter pairs are read in parallel. Chapters already read are reused when you run it again, and your edits to the knowledge base are kept.",
     kb: "What the AI learned from this pair: names, terms, wordplay and style. Your edits are locked and kept when the pair is learned again.",
+  };
+  // The introduction is open until the page's step is done.
+  const about: Record<string, boolean | undefined> = {
+    alignment: data.alignment.status !== "confirmed",
+    learn: data.pair.phase1.state === "none",
+    kb: false,
   };
 
   return (
     <>
       <PageHeader
+        key={def.key}
         context={displayTitle(data.pair.title)}
         title={def.label}
         description={descriptions[def.key]}
+        about={about[def.key]}
         actions={<PairMenu pid={pid} pair={data.pair} />}
       />
       {def.key === "alignment" && <AlignmentPanel pid={pid} detail={data} />}

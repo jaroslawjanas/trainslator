@@ -1,4 +1,4 @@
-import { Alert, Anchor, Loader, Text } from "@mantine/core";
+import { Alert, Anchor, Loader } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -123,11 +123,6 @@ export function Phase1Panel({ pid, pairId }: { pid: string; pairId: string }) {
       >
         <ModelNote steps={["phase1.read", "phase1.merge"]} />
       </RunPanel>
-      <Text size="sm" c="dimmed" maw={720} mb={40}>
-        Chapter pairs are read in parallel, then their findings are merged into one knowledge base.
-        Chapters already read are reused when you run it again, and your edits to the knowledge base
-        are kept.
-      </Text>
       {confirmed && <Phase1Chapters pid={pid} pairId={pairId} job={job} />}
     </>
   );

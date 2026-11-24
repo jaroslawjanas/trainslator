@@ -88,6 +88,20 @@ function Spread({
     }),
     [all],
   );
+  // Only what the chapter has: a filter that would show nothing isn't offered.
+  const filters = (
+    [
+      { value: "attention", label: `Need attention ${counts.attention}`, n: counts.attention },
+      { value: "warnings", label: `Warnings ${counts.warnings}`, n: counts.warnings },
+      { value: "edited", label: `Edited ${counts.edited}`, n: counts.edited },
+    ] satisfies { value: Filter; label: string; n: number }[]
+  )
+    .filter((f) => f.n > 0)
+    .map(({ value, label }) => ({ value, label }));
+  const offered = filter === "all" || filters.some((f) => f.value === filter);
+  useEffect(() => {
+    if (!offered) setFilter("all");
+  }, [offered]);
   const units = useMemo(() => {
     if (filter === "attention") return all.filter((u) => unitMark(u) === "attention");
     if (filter === "warnings") return all.filter((u) => u.warnings.length > 0);
@@ -116,15 +130,25 @@ function Spread({
 
   return (
     <Box>
-      <Group justify="space-between" align="flex-end" mb="md" gap="sm">
-        <Box style={{ minWidth: 0 }}>
-          <Title order={3}>{displayTitle(chapter.title)}</Title>
-          <Text size="sm" c="dimmed" mt={2}>
+      <Group justify="space-between" align="center" mb="sm" gap="sm" wrap="nowrap">
+        <Group gap="sm" align="baseline" wrap="nowrap" style={{ minWidth: 0 }}>
+          <Title order={3} style={{ whiteSpace: "nowrap" }}>
+            {displayTitle(chapter.title)}
+          </Title>
+          <Text size="sm" c="dimmed" truncate>
             {plural(chapter.units, "passage")}
             {chapter.pending > 0 ? `, ${chapter.pending} not translated yet` : ""}
+            {data && filters.length === 0 ? ", none need attention" : ""}
           </Text>
-        </Box>
-        <Group gap="md">
+        </Group>
+        <Group gap="md" wrap="nowrap" style={{ flexShrink: 0 }}>
+          {filters.length > 0 && (
+            <SegmentedControl
+              value={filter}
+              onChange={(v) => setFilter(v as Filter)}
+              data={[{ value: "all", label: `All ${all.length}` }, ...filters]}
+            />
+          )}
           <Switch
             size="xs"
             label="Show tags"
@@ -162,17 +186,6 @@ function Spread({
           )}
         </Group>
       </Group>
-      <SegmentedControl
-        mb="md"
-        value={filter}
-        onChange={(v) => setFilter(v as Filter)}
-        data={[
-          { value: "all", label: `All ${all.length}` },
-          { value: "attention", label: `Need attention ${counts.attention}` },
-          { value: "warnings", label: `Warnings ${counts.warnings}` },
-          { value: "edited", label: `Edited ${counts.edited}` },
-        ]}
-      />
       {isLoading && <Loader size="sm" />}
       {data && units.length === 0 && (
         <Text size="md" c="dimmed" py="xl">
@@ -190,7 +203,7 @@ function Spread({
           <div
             key={filter}
             ref={listRef}
-            style={{ height: virtualizer.getTotalSize(), position: "relative", marginTop: 20 }}
+            style={{ height: virtualizer.getTotalSize(), position: "relative", marginTop: 8 }}
           >
             {virtualizer.getVirtualItems().map((item) => {
               const unit = units[item.index]!;
@@ -624,6 +637,25 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
 
   const state = detail.book.phase3.state;
   const remaining = estimate.data?.remaining ?? 0;
+  const redo = async () => {
+    const how = detail.book.translationMode === "chapters" ? "whole chapters" : "chunks";
+    if (
+      !window.confirm(
+        `Translate the whole book again, in ${how}, with the current model and settings? The current translation, with your edits, is saved to History first, so you can compare or restore it.`,
+      )
+    )
+      return;
+    try {
+      await post(`/api/projects/${pid}/books/${bookId}/phase3/redo`);
+      void client.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (e) {
+      notifications.show({
+        color: "red",
+        title: "Couldn't start the translation",
+        message: (e as Error).message,
+      });
+    }
+  };
   const attention = totals ? totals.flagged + totals.refused : 0;
   const summary = totals
     ? `${plural(totals.ok + totals.edited, "passage")} translated${totals.edited > 0 ? `, ${totals.edited} edited by you` : ""}. ${attention > 0 ? `${attention} need attention.` : "None need attention."}${totals.pending > 0 ? ` ${totals.pending} not translated yet.` : ""}`
@@ -651,35 +683,10 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
               })}`
             : undefined
         }
-        extra={
-          state !== "none" &&
-          !running && (
-            <Button
-              variant="default"
-              onClick={async () => {
-                const how =
-                  detail.book.translationMode === "chapters" ? "whole chapters" : "chunks";
-                if (
-                  !window.confirm(
-                    `Translate the whole book again, in ${how}, with the current model and settings? The current translation, with your edits, is saved to History first, so you can compare or restore it.`,
-                  )
-                )
-                  return;
-                try {
-                  await post(`/api/projects/${pid}/books/${bookId}/phase3/redo`);
-                  void client.invalidateQueries({ queryKey: ["jobs"] });
-                } catch (e) {
-                  notifications.show({
-                    color: "red",
-                    title: "Couldn't start the translation",
-                    message: (e as Error).message,
-                  });
-                }
-              }}
-            >
-              Translate the whole book again
-            </Button>
-          )
+        secondary={
+          state !== "none"
+            ? [{ label: "Translate the whole book again", onClick: redo }]
+            : undefined
         }
         actionLabel={state === "none" ? "Translate the book" : "Translate the rest"}
         hideAction={state !== "none" && remaining === 0}
@@ -712,7 +719,7 @@ export function TranslatePanel({ pid, detail }: { pid: string; detail: BookDetai
       </RunPanel>
 
       <Tabs value={view} onChange={(v) => v && setParam("view", v)} keepMounted={false}>
-        <Tabs.List mb="lg">
+        <Tabs.List mb="md">
           <Tabs.Tab value="review">Chapters</Tabs.Tab>
           <Tabs.Tab value="toc">Title and contents</Tabs.Tab>
           <Tabs.Tab value="glossary">Coined terms</Tabs.Tab>
