@@ -32,6 +32,7 @@ import { del, get, put } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
 import { ListLoading, TextLoading } from "../../components/Loading.tsx";
 import { type Highlight, UnitText } from "../../components/PlaceholderText.tsx";
+import { TextSize } from "../../components/TextSize.tsx";
 import { displayTitle, formatDate, plural } from "../../lib/format.ts";
 import { useSourceName } from "../ProjectPage.tsx";
 import { MIN_QUERY, ReviewSearch, type SearchResult, type SearchScope } from "./ReviewSearch.tsx";
@@ -630,6 +631,7 @@ export function ReviewPanel({ pid, bookId }: { pid: string; bookId: string }) {
                 onChange={(e) => toggleDifferences(e.currentTarget.checked)}
               />
             )}
+            <TextSize />
             <Switch
               size="xs"
               label="Show tags"

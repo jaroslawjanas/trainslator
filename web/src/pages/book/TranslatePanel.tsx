@@ -24,6 +24,7 @@ import { useJobs } from "../../components/JobsIndicator.tsx";
 import { ListLoading, TextLoading } from "../../components/Loading.tsx";
 import { ModelNote } from "../../components/ModelNote.tsx";
 import { estimateText, onSubscription, RunPanel } from "../../components/RunPanel.tsx";
+import { TextSize } from "../../components/TextSize.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { ACTIVE_JOB } from "../../lib/stages.ts";
 import { EntryDrawer } from "../kb/EntryDrawer.tsx";
@@ -149,6 +150,7 @@ function Spread({
               data={[{ value: "all", label: `All ${all.length}` }, ...filters]}
             />
           )}
+          <TextSize />
           <Switch
             size="xs"
             label="Show tags"

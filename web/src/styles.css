@@ -563,9 +563,13 @@ a.tr-context:hover {
 }
 
 .tr-cmp-head {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--tr-paper);
   font-size: var(--mantine-font-size-sm);
   color: var(--tr-graphite);
-  padding-bottom: 8px;
+  padding: 10px 0 8px;
   margin-bottom: 20px;
   border-bottom: 1px solid var(--tr-rule);
 }

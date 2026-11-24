@@ -9,6 +9,7 @@ import { get } from "../../api/client.ts";
 import { useWidePage } from "../../components/Layout.tsx";
 import { TextLoading } from "../../components/Loading.tsx";
 import { type PlaceholderInfo, UnitText } from "../../components/PlaceholderText.tsx";
+import { TextSize } from "../../components/TextSize.tsx";
 import { displayTitle, plural } from "../../lib/format.ts";
 import { useSourceName } from "../ProjectPage.tsx";
 
@@ -210,12 +211,15 @@ export function PairReader({
             </Text>
             {query.isFetching && <Loader size="xs" ml="xs" />}
           </Group>
-          <Switch
-            size="xs"
-            label="Show tags"
-            checked={showTags}
-            onChange={(e) => setShowTags(e.currentTarget.checked)}
-          />
+          <Group gap="lg" wrap="nowrap">
+            <TextSize />
+            <Switch
+              size="xs"
+              label="Show tags"
+              checked={showTags}
+              onChange={(e) => setShowTags(e.currentTarget.checked)}
+            />
+          </Group>
         </Group>
         <Text size="sm" c="dimmed" mb="md" maw={720}>
           Passages are lined up by their length and the names they share, so a row can pair passages
