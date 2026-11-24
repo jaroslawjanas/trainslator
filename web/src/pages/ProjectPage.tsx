@@ -12,17 +12,19 @@ import {
   TextInput,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
+import { IconDownload } from "@tabler/icons-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
 import { languageDisplayName } from "../../../src/shared/languages.ts";
+import type { ProjectOverview } from "../../../src/shared/overview.ts";
 import { del, get, patch, post, upload } from "../api/client.ts";
 import type { Book, Job, Pair, ProjectDetail } from "../api/types.ts";
 import { useJobs } from "../components/JobsIndicator.tsx";
 import { PageHeader, Section } from "../components/PageHeader.tsx";
 import { StageMark } from "../components/StageMark.tsx";
 import { displayTitle, plural, withArticle } from "../lib/format.ts";
-import { BOOK_STAGES, learnedBeforeReplace, type MarkState, PAIR_STAGES } from "../lib/stages.ts";
+import { bookStanding, pairStanding, type Standing } from "../lib/standing.ts";
 import { LanguageNotesPanel } from "./project/LanguageNotesPanel.tsx";
 import { UsagePanel } from "./project/UsagePanel.tsx";
 
@@ -30,6 +32,20 @@ export function useProject(pid: string) {
   return useQuery({
     queryKey: ["project", pid],
     queryFn: () => get<ProjectDetail>(`/api/projects/${pid}`),
+    enabled: Boolean(pid),
+  });
+}
+
+/**
+ * Open questions, passages that need attention and style rules, counted on
+ * the server from the files. With a book id, only that book (for the sidebar).
+ * The key sits under the project's, so every change to the project refreshes it.
+ */
+export function useOverview(pid: string, bookId?: string) {
+  return useQuery({
+    queryKey: ["project", pid, "overview", bookId ?? "all"],
+    queryFn: () =>
+      get<ProjectOverview>(`/api/projects/${pid}/overview${bookId ? `?book=${bookId}` : ""}`),
     enabled: Boolean(pid),
   });
 }
@@ -172,15 +188,36 @@ function UploadBookModal({
   );
 }
 
-function Steps({ items }: { items: { label: string; mark: MarkState }[] }) {
+/** A book or pair in the project list: its title, where it stands, and the next step. */
+function Row({ to, title, standing }: { to: string; title: string; standing: Standing }) {
+  const next = standing.next;
   return (
-    <div className="tr-steps">
-      {items.map((s) => (
-        <span key={s.label} className="tr-step" data-state={s.mark}>
-          <StageMark state={s.mark} />
-          {s.label}
-        </span>
-      ))}
+    <div className="tr-row">
+      <div style={{ minWidth: 0 }}>
+        <Link to={to} className="tr-row-title">
+          {title}
+        </Link>
+        <div className="tr-row-standing" data-state={standing.mark}>
+          <StageMark state={standing.mark} />
+          <span>{standing.text}</span>
+        </div>
+      </div>
+      {next &&
+        (next.href ? (
+          <Button
+            component="a"
+            href={next.href}
+            download={next.fileName}
+            variant="default"
+            leftSection={<IconDownload size={16} stroke={1.8} />}
+          >
+            {next.label}
+          </Button>
+        ) : (
+          <Button component={Link} to={next.to ?? to} variant={next.primary ? "filled" : "default"}>
+            {next.label}
+          </Button>
+        ))}
     </div>
   );
 }
@@ -198,6 +235,7 @@ function Overview({
 }) {
   const { project, pairs, books } = detail;
   const base = `/projects/${project.id}`;
+  const counts = useOverview(project.id).data;
   return (
     <>
       <PageHeader
@@ -212,7 +250,7 @@ function Overview({
           </>
         }
       />
-      <Box maw={920}>
+      <Box>
         <Section
           title="Books"
           description="Each book is read first, then translated and built as a new EPUB."
@@ -225,17 +263,12 @@ function Overview({
           ) : (
             <div>
               {books.map((b) => (
-                <Link key={b.id} to={`${base}/books/${b.id}`} className="tr-row-link">
-                  <div className="tr-row-title">{displayTitle(b.title)}</div>
-                  <Text size="xs" c="dimmed" mt={2} mb={8}>
-                    {b.sourceFileName}
-                  </Text>
-                  <Steps
-                    items={BOOK_STAGES.filter((s) =>
-                      ["read", "translate", "build"].includes(s.key),
-                    ).map((s) => ({ label: s.label, mark: s.mark({ book: b, jobs }) }))}
-                  />
-                </Link>
+                <Row
+                  key={b.id}
+                  to={`${base}/books/${b.id}`}
+                  title={displayTitle(b.title)}
+                  standing={bookStanding(b, counts?.books[b.id], jobs, base)}
+                />
               ))}
             </div>
           )}
@@ -251,29 +284,14 @@ function Overview({
             </Text>
           ) : (
             <div>
-              {pairs.map((p) => {
-                const learning = PAIR_STAGES.find((s) => s.key === "learn")!;
-                const mark = learning.mark({ pair: p, jobs });
-                return (
-                  <Link key={p.id} to={`${base}/pairs/${p.id}`} className="tr-row-link">
-                    <div className="tr-row-title">{displayTitle(p.title)}</div>
-                    <Text size="xs" c="dimmed" mt={2} mb={8}>
-                      {p.sourceFileName} with {p.targetFileName}
-                    </Text>
-                    <Steps
-                      items={[
-                        {
-                          label:
-                            p.phase1.entries !== null
-                              ? `${p.fromBook ? "Made from a book: " : "Learned "}${plural(p.phase1.entries, "entry", "entries")}${p.phase1.state === "done_with_errors" ? ", some chapters failed" : ""}${learnedBeforeReplace(p) ? ", before a book was replaced" : ""}`
-                              : "Not learned yet",
-                          mark,
-                        },
-                      ]}
-                    />
-                  </Link>
-                );
-              })}
+              {pairs.map((p) => (
+                <Row
+                  key={p.id}
+                  to={`${base}/pairs/${p.id}`}
+                  title={displayTitle(p.title)}
+                  standing={pairStanding(p, counts?.pairs[p.id], jobs, base)}
+                />
+              ))}
             </div>
           )}
         </Section>

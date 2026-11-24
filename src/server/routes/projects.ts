@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { SOURCE_LANGUAGES } from "../../languages/index.ts";
 import { liveBook } from "../../services/books.ts";
+import { projectOverview } from "../../services/overview.ts";
 import { livePair } from "../../services/pairs.ts";
 import { COMMON_LANGUAGES, languageDisplayName } from "../../shared/languages.ts";
 import type { AppContext } from "../context.ts";
@@ -52,6 +53,13 @@ export function projectRoutes(app: AppContext): Hono {
       languageNotes: await app.projects.languageNotes(pid),
       jobs: app.runner.list(pid).slice(0, 50),
     });
+  });
+
+  // Where each book and pair stands: open questions, passages that need attention, style rules.
+  r.get("/:pid/overview", async (c) => {
+    const pid = idParam(c, "pid");
+    await app.projects.get(pid);
+    return c.json(await projectOverview(app, pid, c.req.query("book") || undefined));
   });
 
   r.patch("/:pid", async (c) => {

@@ -135,6 +135,56 @@ describe("reference pairs", () => {
     ).toBe(404);
   });
 
+  it("counts what the lists show about books and pairs", async () => {
+    srv = await makeTestServer();
+    const pid = await project(srv);
+    const { pair } = await srv.json<{ pair: { id: string } }>(
+      "POST",
+      `/api/projects/${pid}/pairs`,
+      form(sampleNovel(), sampleNovelTranslation()),
+    );
+    const upload = new FormData();
+    upload.set("file", new File([sampleNovel()], "novel.epub", { type: "application/epub+zip" }));
+    const { book } = await srv.json<{ book: { id: string } }>(
+      "POST",
+      `/api/projects/${pid}/books`,
+      upload,
+    );
+    interface Overview {
+      books: Record<string, { entries: number; openQuestions: number; passages: number }>;
+      pairs: Record<string, { entries: number; styleRules: number }>;
+    }
+    // Nothing has run: every count is zero, and nothing is missing.
+    const empty = await srv.json<Overview>("GET", `/api/projects/${pid}/overview`);
+    expect(empty.books[book.id]).toEqual({
+      entries: 0,
+      openQuestions: 0,
+      passages: 0,
+      attention: 0,
+      pending: 0,
+    });
+    expect(empty.pairs[pair.id]).toEqual({ entries: 0, styleRules: 0 });
+
+    await srv.json("POST", `/api/projects/${pid}/books/${book.id}/kb/entries`, {
+      kind: "person",
+      source: "Mira",
+      aliases: [],
+      target: "Mira",
+      targetSeen: [],
+      treatment: "kept",
+      attributes: [],
+      note: "",
+      examples: [],
+      status: "locked",
+      question: null,
+    });
+    // Counted from the files, so an edit shows at once. For one book, pairs are left out.
+    const one = await srv.json<Overview>("GET", `/api/projects/${pid}/overview?book=${book.id}`);
+    expect(one.books[book.id]?.entries).toBe(1);
+    expect(one.books[book.id]?.openQuestions).toBe(0);
+    expect(one.pairs).toEqual({});
+  });
+
   it("rejects DRM-protected books with a clear message", async () => {
     srv = await makeTestServer();
     const pid = await project(srv);

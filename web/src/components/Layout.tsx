@@ -8,11 +8,20 @@ import {
   Stack,
   Text,
   Tooltip,
+  UnstyledButton,
   useComputedColorScheme,
   useMantineColorScheme,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
-import { IconBooks, IconMoon, IconSettings, IconSun } from "@tabler/icons-react";
+import { useDisclosure, useLocalStorage } from "@mantine/hooks";
+import {
+  IconBooks,
+  IconChevronRight,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconMoon,
+  IconSettings,
+  IconSun,
+} from "@tabler/icons-react";
 import { useQuery } from "@tanstack/react-query";
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useMatches } from "react-router";
@@ -22,7 +31,7 @@ import { useLiveEvents } from "../api/live.ts";
 import type { Book, Pair } from "../api/types.ts";
 import { displayTitle } from "../lib/format.ts";
 import { BOOK_STAGES, PAIR_STAGES, type StageDef } from "../lib/stages.ts";
-import { useProject } from "../pages/ProjectPage.tsx";
+import { useOverview, useProject } from "../pages/ProjectPage.tsx";
 import { ActivityButton, useJobs } from "./JobsIndicator.tsx";
 import { StageMark } from "./StageMark.tsx";
 
@@ -65,6 +74,7 @@ function NavItem({
   depth = 0,
   end = false,
   left,
+  right,
   className,
   onNavigate,
 }: {
@@ -73,6 +83,8 @@ function NavItem({
   depth?: number;
   end?: boolean;
   left?: ReactNode;
+  /** A count beside the label, shown only when something needs you. */
+  right?: ReactNode;
   className?: string;
   onNavigate?: () => void;
 }) {
@@ -87,6 +99,7 @@ function NavItem({
     >
       {left}
       <span className="tr-nav-text">{children}</span>
+      {right}
     </NavLink>
   );
 }
@@ -95,26 +108,34 @@ function StageList({
   base,
   stages,
   ctx,
+  needs = {},
   onNavigate,
 }: {
   base: string;
   stages: StageDef[];
   ctx: Parameters<StageDef["mark"]>[0];
+  /** What needs you on a stage's page, by stage key: "5 open". */
+  needs?: Record<string, string | undefined>;
   onNavigate: () => void;
 }) {
   return (
     <>
-      {stages.map((s) => (
-        <NavItem
-          key={s.key}
-          to={`${base}/${s.key}`}
-          depth={2}
-          left={<StageMark state={s.mark(ctx)} />}
-          onNavigate={onNavigate}
-        >
-          {s.label}
-        </NavItem>
-      ))}
+      {stages.map((s) => {
+        const need = needs[s.key];
+        const mark = s.mark(ctx);
+        return (
+          <NavItem
+            key={s.key}
+            to={`${base}/${s.key}`}
+            depth={2}
+            left={<StageMark state={need && mark !== "running" ? "warning" : mark} />}
+            right={need && <span className="tr-nav-need">{need}</span>}
+            onNavigate={onNavigate}
+          >
+            {s.label}
+          </NavItem>
+        );
+      })}
     </>
   );
 }
@@ -132,6 +153,9 @@ function ProjectNav({
 }) {
   const project = useProject(pid);
   const jobs = useJobs().data?.jobs ?? [];
+  // Inside a book the pairs fold into one line; they're a click away on Books and pairs.
+  const [pairsOpen, setPairsOpen] = useState(false);
+  const counts = useOverview(bookId ? pid : "", bookId).data?.books[bookId ?? ""];
   const pairDetail = useQuery({
     queryKey: ["pair", pairId],
     queryFn: () => get<{ alignment: { status: string } }>(`/api/projects/${pid}/pairs/${pairId}`),
@@ -181,6 +205,10 @@ function ProjectNav({
           base={`${base}/books/${book.id}`}
           stages={BOOK_STAGES}
           ctx={{ book, jobs }}
+          needs={{
+            kb: counts?.openQuestions ? `${counts.openQuestions} open` : undefined,
+            translate: counts?.attention ? `${counts.attention} to check` : undefined,
+          }}
           onNavigate={onNavigate}
         />
       )}
@@ -216,12 +244,29 @@ function ProjectNav({
           <Stack gap={1}>{books.map(bookItem)}</Stack>
         </>
       )}
-      {pairs.length > 0 && (
-        <>
-          <div className="tr-nav-label">Reference pairs</div>
-          <Stack gap={1}>{pairs.map(pairItem)}</Stack>
-        </>
-      )}
+      {pairs.length > 0 &&
+        (bookId ? (
+          <>
+            <UnstyledButton
+              className="tr-nav-label tr-nav-fold"
+              aria-expanded={pairsOpen}
+              onClick={() => setPairsOpen((v) => !v)}
+            >
+              <span>Reference pairs</span>
+              <span className="num">{pairs.length}</span>
+              <IconChevronRight
+                size={13}
+                style={{ transform: pairsOpen ? "rotate(90deg)" : undefined }}
+              />
+            </UnstyledButton>
+            {pairsOpen && <Stack gap={1}>{pairs.map(pairItem)}</Stack>}
+          </>
+        ) : (
+          <>
+            <div className="tr-nav-label">Reference pairs</div>
+            <Stack gap={1}>{pairs.map(pairItem)}</Stack>
+          </>
+        ))}
     </Stack>
   );
 }
@@ -251,6 +296,8 @@ export function Layout() {
   useLiveEvents();
   const [opened, { toggle, close }] = useDisclosure(false);
   const [wide, setWide] = useState(false);
+  // Hiding the sidebar gives side-by-side text its width back; the choice is remembered.
+  const [hidden, setHidden] = useLocalStorage({ key: "tr-sidebar-hidden", defaultValue: false });
   const params = useRouteParams();
   const location = useLocation();
   // biome-ignore lint/correctness/useExhaustiveDependencies: close the mobile menu on navigation
@@ -259,7 +306,7 @@ export function Layout() {
   return (
     <AppShell
       header={{ height: { base: 52, sm: 0 } }}
-      navbar={{ width: 272, breakpoint: "sm", collapsed: { mobile: !opened } }}
+      navbar={{ width: 272, breakpoint: "sm", collapsed: { mobile: !opened, desktop: hidden } }}
       padding={0}
     >
       <AppShell.Header hiddenFrom="sm" className="tr-nav">
@@ -273,10 +320,22 @@ export function Layout() {
       </AppShell.Header>
       <AppShell.Navbar className="tr-nav" p="sm">
         <AppShell.Section visibleFrom="sm" px={6} pt={6} pb="md">
-          <Link to="/projects" className="tr-wordmark">
-            <BookMark />
-            Trainslator
-          </Link>
+          <Group justify="space-between" wrap="nowrap">
+            <Link to="/projects" className="tr-wordmark">
+              <BookMark />
+              Trainslator
+            </Link>
+            <Tooltip label="Hide the sidebar">
+              <ActionIcon
+                variant="subtle"
+                color="gray"
+                aria-label="Hide the sidebar"
+                onClick={() => setHidden(true)}
+              >
+                <IconLayoutSidebarLeftCollapse size={17} stroke={1.6} />
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </AppShell.Section>
         <AppShell.Section grow component={ScrollArea} scrollbarSize={6}>
           <NavItem
@@ -315,6 +374,20 @@ export function Layout() {
         </AppShell.Section>
       </AppShell.Navbar>
       <AppShell.Main>
+        {hidden && (
+          <Tooltip label="Show the sidebar">
+            <ActionIcon
+              className="tr-nav-show"
+              visibleFrom="sm"
+              variant="subtle"
+              color="gray"
+              aria-label="Show the sidebar"
+              onClick={() => setHidden(false)}
+            >
+              <IconLayoutSidebarLeftExpand size={17} stroke={1.6} />
+            </ActionIcon>
+          </Tooltip>
+        )}
         <Box px={{ base: "md", sm: 40 }} pb={64} maw={wide ? undefined : 1440}>
           <WideContext.Provider value={setWide}>
             <Outlet />
