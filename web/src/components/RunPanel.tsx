@@ -145,7 +145,7 @@ export function RunPanel({
     return (
       <>
         <Portal target={`#${HEADER_STATUS}`}>
-          <Group gap="xs" wrap="nowrap" className="tr-run-line">
+          <div className="tr-run-line">
             <StageMark state="done" />
             <Text size="md" fw={500} style={{ whiteSpace: "nowrap" }}>
               Done
@@ -172,7 +172,7 @@ export function RunPanel({
             </Button>
             {extra}
             <RunActions actions={actions} />
-          </Group>
+          </div>
         </Portal>
         {(always || estimate || open) && (
           <Box mb="lg">

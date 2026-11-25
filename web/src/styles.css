@@ -290,6 +290,15 @@ body {
 }
 
 /* Beside the title: a page's one-line status and its actions. */
+.tr-header-side {
+  flex: 1 1 320px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--mantine-spacing-xs);
+}
+
 .tr-header-status {
   flex: 1 1 auto;
   min-width: 0;
@@ -297,9 +306,19 @@ body {
   justify-content: flex-end;
 }
 
+.tr-header-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
 .tr-run-line {
   min-width: 0;
   max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
 }
 
 /* Only the summary gives way when the line is full. */
@@ -313,6 +332,72 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* On a narrow window the line wraps, and the summary takes a row of its own. */
+@media (max-width: 48em) {
+  .tr-header-side,
+  .tr-run-line {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .tr-header-status {
+    justify-content: flex-start;
+  }
+  .tr-run-line > .tr-run-summary {
+    order: 9;
+    flex-basis: 100%;
+    white-space: normal;
+  }
+}
+
+/* Translation: the chapter's title, count and tools on one line. */
+.tr-chapter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mantine-spacing-sm);
+  margin-bottom: var(--mantine-spacing-sm);
+}
+
+.tr-chapter-bar-title {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--mantine-spacing-sm);
+}
+
+.tr-chapter-bar-title > h3 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* When the line is full, the count gives way before the title does. */
+.tr-chapter-bar-title > :last-child {
+  flex: 0 100 auto;
+  min-width: 0;
+}
+
+.tr-chapter-bar-tools {
+  flex: none;
+}
+
+@media (max-width: 62em) {
+  .tr-chapter-bar {
+    flex-wrap: wrap;
+  }
+  .tr-chapter-bar-title {
+    flex-basis: 100%;
+    flex-wrap: wrap;
+  }
+  .tr-chapter-bar-title > h3 {
+    white-space: normal;
+  }
+  .tr-chapter-bar-tools {
+    flex: 1 1 auto;
+  }
 }
 
 /* A step that hasn't finished cleanly: the whole panel. */

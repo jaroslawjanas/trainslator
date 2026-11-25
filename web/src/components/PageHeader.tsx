@@ -59,14 +59,10 @@ export function PageHeader({
             )}
           </Group>
         </Box>
-        <Group gap="xs" wrap="nowrap" justify="flex-end" style={{ flex: "1 1 320px", minWidth: 0 }}>
+        <div className="tr-header-side">
           <div id={HEADER_STATUS} className="tr-header-status" />
-          {actions && (
-            <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-              {actions}
-            </Group>
-          )}
-        </Group>
+          {actions && <div className="tr-header-actions">{actions}</div>}
+        </div>
       </Group>
       {description &&
         (collapsible ? (

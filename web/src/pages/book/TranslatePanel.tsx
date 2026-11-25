@@ -131,18 +131,16 @@ function Spread({
 
   return (
     <Box>
-      <Group justify="space-between" align="center" mb="sm" gap="sm" wrap="nowrap">
-        <Group gap="sm" align="baseline" wrap="nowrap" style={{ minWidth: 0 }}>
-          <Title order={3} style={{ whiteSpace: "nowrap" }}>
-            {displayTitle(chapter.title)}
-          </Title>
+      <div className="tr-chapter-bar">
+        <div className="tr-chapter-bar-title">
+          <Title order={3}>{displayTitle(chapter.title)}</Title>
           <Text size="sm" c="dimmed" truncate>
             {plural(chapter.units, "passage")}
             {chapter.pending > 0 ? `, ${chapter.pending} not translated yet` : ""}
             {data && filters.length === 0 ? ", none need attention" : ""}
           </Text>
-        </Group>
-        <Group gap="md" wrap="nowrap" style={{ flexShrink: 0 }}>
+        </div>
+        <Group gap="md" className="tr-chapter-bar-tools">
           {filters.length > 0 && (
             <SegmentedControl
               value={filter}
@@ -187,7 +185,7 @@ function Spread({
             </Button>
           )}
         </Group>
-      </Group>
+      </div>
       {isLoading && <TextLoading />}
       {data && units.length === 0 && (
         <Text size="md" c="dimmed" py="xl">

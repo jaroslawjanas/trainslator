@@ -409,7 +409,7 @@ export function KbEditor({
   return (
     <>
       <Portal target={`#${HEADER_STATUS}`}>
-        <Group gap="xs" wrap="nowrap" className="tr-run-line">
+        <div className="tr-run-line">
           <Text size="sm" c="dimmed" className="tr-run-summary">
             {plural(data.kb.entries.length, "entry", "entries")} and{" "}
             {count(data.kb.styleRules.length, "style rule")}
@@ -444,7 +444,7 @@ export function KbEditor({
             </Button>
           </Tooltip>
           <Button onClick={() => setEditing({ entry: newEntry(), isNew: true })}>Add entry</Button>
-        </Group>
+        </div>
       </Portal>
       <StartOverModal
         pid={pid}
