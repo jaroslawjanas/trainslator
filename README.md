@@ -138,11 +138,12 @@ pnpm start                # http://127.0.0.1:5174
    fills in sensible defaults), add one or more models, and press **Test**. The test sends a
    few small requests and suggests settings that work with that provider.
 2. **Settings → Models for each step:** choose a model for each step. A fast model is fine for
-   phase 1, a medium one for phase 2, and the strongest you can afford for phase 3.
+   learning, a medium one for reading, and the strongest you can afford for translation.
 3. **Projects:** create a project with its source and target languages. Draft the language notes
    with AI and adjust them; they go into every request.
 4. Add reference pairs, then the book. The sidebar lists each book's stages (setup, reading,
-   knowledge base, translation, review, build, history) and marks the ones that are done.
+   knowledge base, translation, review, build, history) and marks the ones that are done; the
+   project page says where each book stands and what it needs next.
 
 The [tutorial](TUTORIAL.md) covers each of these steps in detail.
 

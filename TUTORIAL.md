@@ -115,8 +115,8 @@ The short path from nothing to a translated EPUB. Every step links to its full d
    `pnpm dev` and open http://localhost:5173.
 3. **Connect an AI provider:** **Settings → Add connection**, then **Add model** and **Test**.
    Apply the suggested settings if the test offers any. See [section 4](#4-connecting-ai-models).
-4. **Choose a model for each step:** **Settings → Models for each step**. Fast models for phase 1,
-   mid-range for phase 2, your strongest for phase 3. Press **Save**. See
+4. **Choose a model for each step:** **Settings → Models for each step**. Fast models for learning,
+   mid-range for reading, your strongest for translation. Press **Save**. See
    [section 5](#5-choosing-models-for-each-step).
 5. **Create a project:** **New project**, give it a name, the language to translate from and the
    one to translate into. See
@@ -248,17 +248,26 @@ There are no user accounts, so don't expose the port to a network.
 The sidebar on the left is the main navigation. **All projects** is at the top. Inside a project
 you'll see **Books and pairs**, **Language notes**, **Usage** and **Project settings**, then the
 project's books and reference pairs. When a book or pair is open, its stages appear under it,
-each with a mark: a green tick when it's done, a spinning circle while it runs, an orange
+each with a mark: a grey tick when it's done, a spinning circle while it runs, an orange
 exclamation mark when it finished with errors or stopped early, red when it failed, and an empty
-circle when it hasn't run yet.
+circle when it hasn't run yet. Colour is kept for what needs you: **Knowledge base** shows how many
+questions are open and **Translation** how many passages need checking, in orange, only when
+there are any. While a book is open, the reference pairs fold into one line with their number;
+click it to unfold them.
 
 At the bottom of the sidebar are **Activity** (running and recent jobs), **Settings** and a
-light/dark switch. On a phone, the sidebar opens from the menu button.
+light/dark switch. The button beside the app's name hides the sidebar, which gives side-by-side
+text more room; a button at the top left brings it back. On a phone, the sidebar opens from the
+menu button.
+
+Every page starts with one line: where you are, the page's title, its status and its actions.
+**About this page** beside the title shows a short introduction. It is open until the page's step
+has run, and closed after that.
 
 ![A project page listing two books with their stage marks and one reference pair](docs/images/project.jpg)
 
-*A project's page. The sidebar lists the project's pages, its books and its reference pairs; each
-book shows marks for Reading, Translation and Build.*
+*A project's page. The sidebar lists the project's pages, its books and its reference pairs. (The
+picture predates the current layout: each row now says where the book or pair stands.)*
 
 ---
 
@@ -481,9 +490,12 @@ when it picks the reference entries a book needs (**Only entries in this book**)
 When a book or pair is imported, the app also warns if an EPUB says it's in a different language
 than the one it's used as.
 
-The project page lists its **Books**, each with marks for Reading, Translation and Build, and its
-**Reference pairs**, each with the number of entries learned. **Add reference pair** and
-**Add book** are at the top.
+The project page lists its **Books** and its **Reference pairs**. Each row has one sentence on
+where it stands, for example "Built 7 hours ago. 3,156 passages, none need attention." or "Read 1
+hour ago. 2 open questions to answer before translating.", and a button for the next step: set up
+and read, answer the questions, translate, check the passages that need attention, build, or
+download the EPUB. A pair says how many entries and style rules it has and when it was learned.
+**Add reference pair** and **Add book** are at the top.
 
 ### Language notes
 
@@ -636,7 +648,7 @@ failed** in the job row reads only those again.
 
 ## 8. Working with knowledge bases
 
-Pairs and books share the same editor, under **Knowledge base**. The top line counts entries,
+Pairs and books share the same editor, under **Knowledge base**. Beside the title it counts entries,
 style rules and how many you edited; **Add entry** creates one by hand, and **Start over…** empties
 the knowledge base so it can be made again (see [Starting over](#starting-over)). There are three
 tabs: **Entries**, **Style rules** and **As the AI sees it**.
@@ -865,6 +877,10 @@ in instead. Chapter 6 shows a rejected edit.*
 
 ### Running it again
 
+Once reading has finished, the page's top line says so, and **Run again** beside it offers the two
+ways to run it again. **Details** shows the models, the advice on reasoning effort and the requests
+of the last run.
+
 - **Continue reading**: appears when a run stopped before the end.
 - **Run the final review again**: after a finished run, for example after you answered questions.
 - **Read again from this chapter** (inside a chapter): that chapter and all later ones are read
@@ -1021,7 +1037,10 @@ Below the run panel are three tabs: **Chapters**, **Title and contents** and **C
 **Chapters** shows a chapter list on the left (with passages, how many need attention, how many are
 untranslated or edited) and the open chapter as a book spread: English on the left page,
 translation on the right. Filter the passages with **All**, **Need attention**, **Warnings** or
-**Edited**. **Show tags** displays the placeholders. Passages that need attention (they failed the
+**Edited**; only the filters that would show something are offered, and a chapter with nothing
+to check says "none need attention" instead. The two buttons with an A make the book text smaller
+or larger, here, in Review and in a reference pair's side-by-side view. **Show tags** displays the
+placeholders. Passages that need attention (they failed the
 checks, or the model refused them) are marked in red, passages with a warning in orange, and your
 own edits in blue.
 
@@ -1344,11 +1363,13 @@ parallel limit.
 - The **run panel** at the top of each phase shows the state, a progress bar, the job's current
   stage and, while it runs, the requests in flight: which request, which model and reasoning, how
   long it has been running, and roughly how many tokens have arrived. Requests waiting for a free
-  slot are counted below. After the run, **Details of the last run** lists the finished requests
-  with how long they waited, output tokens and the result (ok, reused a saved answer, cut off at
-  the output limit, or the error).
-- **Activity** at the bottom of the sidebar lists running and recent jobs across all projects. The
-  app also shows a notification when a job finishes or fails.
+  slot are counted below. A run that finished cleanly shrinks to one line beside the page title;
+  **Details** there lists the finished requests with how long they waited, output tokens and the
+  result (ok, reused a saved answer, cut off at the output limit, or the error). A run that
+  stopped, failed or finished with errors keeps the whole panel, with **Details of the last run**.
+- **Activity** at the bottom of the sidebar lists running and recent jobs across all projects,
+  each with the book or pair it was for. The app also shows a notification when a job finishes
+  or fails.
 
 ![A translation running, with its progress, stages and the request in progress](docs/images/translation-running.jpg)
 
