@@ -69,6 +69,13 @@ export function bookStanding(
     };
 
   if (translated === "done" || translated === "done_with_errors") {
+    // The counts arrive a moment later; until then, don't show a clean mark for a run that wasn't.
+    if (!counts && translated === "done_with_errors")
+      return {
+        mark: "warning",
+        text: `Translated${when(book.phase3.finishedAt)}. Some passages need attention.`,
+        next: { label: "Check the passages", to: `${base}/translate`, primary: true },
+      };
     if (counts && counts.attention > 0)
       return {
         mark: "warning",
@@ -87,7 +94,13 @@ export function bookStanding(
       };
     const clean = counts ? ` ${passages}, none need attention.` : "";
     const built = book.build.builtAt;
-    // A build older than the translation doesn't hold what you'd download.
+    // A build older than the translation, or than your edits to it, isn't what you'd want to download.
+    if (built && counts?.buildCurrent === false)
+      return {
+        mark: "warning",
+        text: `Translated${when(book.phase3.finishedAt)}.${clean} The EPUB was built before the translation last changed.`,
+        next: { label: "Build again", to: `${base}/build`, primary: true },
+      };
     if (built && (!book.phase3.finishedAt || built >= book.phase3.finishedAt))
       return {
         mark: "done",

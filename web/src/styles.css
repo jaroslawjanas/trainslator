@@ -992,25 +992,6 @@ a.tr-row-title:hover {
   text-underline-offset: 4px;
 }
 
-.tr-steps {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.tr-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--mantine-font-size-sm);
-  color: var(--tr-graphite);
-  padding-right: 10px;
-}
-
-.tr-step[data-state="done"] {
-  color: var(--tr-ink);
-}
-
 .tr-term {
   font-family: var(--tr-serif);
   font-size: 0.9375rem;

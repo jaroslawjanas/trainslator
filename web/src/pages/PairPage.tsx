@@ -47,7 +47,7 @@ export function PairPage() {
   return (
     <>
       <PageHeader
-        key={def.key}
+        key={`${pairId}:${def.key}`}
         context={displayTitle(data.pair.title)}
         title={def.label}
         description={descriptions[def.key]}
@@ -55,7 +55,7 @@ export function PairPage() {
         actions={<PairMenu pid={pid} pair={data.pair} />}
       />
       {def.key === "alignment" && <AlignmentPanel pid={pid} detail={data} />}
-      {def.key === "learn" && <Phase1Panel pid={pid} pairId={pairId} />}
+      {def.key === "learn" && <Phase1Panel key={pairId} pid={pid} pairId={pairId} />}
       {def.key === "kb" && <KbEditor pid={pid} scope="pair" targetId={pairId} />}
     </>
   );

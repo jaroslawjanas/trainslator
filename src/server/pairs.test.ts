@@ -162,6 +162,7 @@ describe("reference pairs", () => {
       passages: 0,
       attention: 0,
       pending: 0,
+      buildCurrent: null,
     });
     expect(empty.pairs[pair.id]).toEqual({ entries: 0, styleRules: 0 });
 

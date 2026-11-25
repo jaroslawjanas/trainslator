@@ -67,18 +67,18 @@ export function BookPage() {
   return (
     <>
       <PageHeader
-        key={def.key}
+        key={`${bookId}:${def.key}`}
         context={displayTitle(data.book.title)}
         title={def.label}
         description={DESCRIPTIONS[def.key]?.(targetName, source)}
         about={about[def.key]}
       />
       {def.key === "setup" && <SetupPanel pid={pid} detail={data} />}
-      {def.key === "read" && <Phase2Panel pid={pid} detail={data} />}
+      {def.key === "read" && <Phase2Panel key={bookId} pid={pid} detail={data} />}
       {def.key === "kb" && <KbEditor pid={pid} scope="book" targetId={bookId} />}
-      {def.key === "translate" && <TranslatePanel pid={pid} detail={data} />}
+      {def.key === "translate" && <TranslatePanel key={bookId} pid={pid} detail={data} />}
       {def.key === "review" && <ReviewPanel pid={pid} bookId={bookId} />}
-      {def.key === "build" && <BuildPanel pid={pid} detail={data} />}
+      {def.key === "build" && <BuildPanel key={bookId} pid={pid} detail={data} />}
       {def.key === "history" && <HistoryPanel pid={pid} bookId={bookId} />}
     </>
   );

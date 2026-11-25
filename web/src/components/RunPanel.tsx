@@ -90,7 +90,7 @@ function RunActions({ actions }: { actions: RunAction[] }) {
  * The state of one step (or the build) and its main action. Before a run it
  * is a panel with the estimate, the models and the options. While it runs it
  * shows progress. Once it has finished cleanly it is one line beside the
- * page title, with the rest behind "Details".
+ * page title, with the rest behind "Options and details".
  */
 export function RunPanel({
   state,
@@ -168,7 +168,7 @@ export function RunPanel({
               aria-expanded={open}
               onClick={() => setOpen((v) => !v)}
             >
-              Details
+              {children ? "Options and details" : "Details"}
             </Button>
             {extra}
             <RunActions actions={actions} />

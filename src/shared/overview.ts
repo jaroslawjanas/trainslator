@@ -8,6 +8,8 @@ export interface BookCounts {
   attention: number;
   /** Passages not translated yet. */
   pending: number;
+  /** Whether the built EPUB holds the translation as it is now; null when there is no build to tell. */
+  buildCurrent: boolean | null;
 }
 
 export interface PairCounts {

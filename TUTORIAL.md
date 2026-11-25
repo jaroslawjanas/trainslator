@@ -266,8 +266,7 @@ has run, and closed after that.
 
 ![A project page listing two books with their stage marks and one reference pair](docs/images/project.jpg)
 
-*A project's page. The sidebar lists the project's pages, its books and its reference pairs. (The
-picture predates the current layout: each row now says where the book or pair stands.)*
+*A project's page. The sidebar lists the project's pages, its books and its reference pairs.*
 
 ---
 
@@ -878,8 +877,8 @@ in instead. Chapter 6 shows a rejected edit.*
 ### Running it again
 
 Once reading has finished, the page's top line says so, and **Run again** beside it offers the two
-ways to run it again. **Details** shows the models, the advice on reasoning effort and the requests
-of the last run.
+ways to run it again. **Options and details** shows the models, the advice on reasoning effort and
+the requests of the last run.
 
 - **Continue reading**: appears when a run stopped before the end.
 - **Run the final review again**: after a finished run, for example after you answered questions.
@@ -914,7 +913,9 @@ still going, answers you give are queued and applied between chapters.
 
 Open **Translation**. The run panel shows how many chunks or chapters are left, the estimate, the
 model, and a choice of how to send the book to the model: **Chunks** or **Whole chapters**, with a
-**?** that explains the difference. Press **Translate the book**.
+**?** that explains the difference. Press **Translate the book**. Once the book is translated the
+page's top line says so, and the choice and the model are behind **Options and details** beside
+it; look there before you translate the rest or the whole book again.
 
 ![The Translation page with the run panel, chapter list and the English and Polish pages](docs/images/translation.jpg)
 
@@ -1364,7 +1365,7 @@ parallel limit.
   stage and, while it runs, the requests in flight: which request, which model and reasoning, how
   long it has been running, and roughly how many tokens have arrived. Requests waiting for a free
   slot are counted below. A run that finished cleanly shrinks to one line beside the page title;
-  **Details** there lists the finished requests with how long they waited, output tokens and the
+  **Options and details** there (**Details** on Build) lists the finished requests with how long they waited, output tokens and the
   result (ok, reused a saved answer, cut off at the output limit, or the error). A run that
   stopped, failed or finished with errors keeps the whole panel, with **Details of the last run**.
 - **Activity** at the bottom of the sidebar lists running and recent jobs across all projects,
